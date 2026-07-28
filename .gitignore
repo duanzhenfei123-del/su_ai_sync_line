@@ -1,0 +1,30 @@
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Ruby
+*.gem
+.bundle/
+vendor/bundle/
+
+# Temporary and logs
+*.log
+tmp/
+temp/
+
+# Packaging and local exports
+dist/
+build/
+release/
+*.zip
+
+# Local SketchUp / inspection artifacts
+_inspect_rbz/
+ai-export/
