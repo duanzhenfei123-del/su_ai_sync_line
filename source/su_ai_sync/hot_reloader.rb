@@ -7,6 +7,7 @@
       begin
         files = [
           "su_ai_sync/logger.rb",
+          "su_ai_sync/geometry_math.rb",
           "su_ai_sync/material_manager.rb",
           "su_ai_sync/geometry_builder.rb",
           "su_ai_sync/importer.rb",

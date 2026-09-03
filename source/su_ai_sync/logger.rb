@@ -3,15 +3,16 @@ module SU_AI_Sync
     @debug_mode = false
     def self.debug_mode=(value); @debug_mode = value; end
 
-    # 清理日志：每次启动时将上次日志备份为 .bak，重新开始记录
-    def self.cleanup_on_startup
-      return unless File.exist?(LOG_FILE)
+    # 每次导入只保留一份日志，不创建备份或轮转文件。
+    def self.reset_for_import
       begin
-        bak = LOG_FILE.sub(/\.log$/, ".log.bak")
-        FileUtils.cp(LOG_FILE, bak)
-        File.truncate(LOG_FILE, 0)
-      rescue => e
-        # 备份失败不影响使用
+        [
+          LOG_FILE,
+          LOG_FILE.sub(/\.log\z/i, ".log.bak"),
+          LOG_FILE.sub(/\.log\z/i, ".old.log")
+        ].uniq.each { |path| File.delete(path) if File.exist?(path) }
+      rescue => error
+        puts "[SU+AI Logger] 清理历史日志失败: #{error.message}" if @debug_mode
       end
     end
     def self.log(level, message)

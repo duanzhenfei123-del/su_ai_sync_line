@@ -14,7 +14,6 @@ module SU_AI_Sync
       @extrude_thickness = Sketchup.read_default(PLUGIN, "extrude_thickness", 10.0).to_f
       @import_folder = SU_AI_Sync.import_folder
       Logger.info("UI_Manager: import_folder = #{@import_folder}")
-      Logger.cleanup_on_startup
     end
 
     def show
@@ -144,13 +143,18 @@ module SU_AI_Sync
     end
 
     def browse_folder(dialog)
-      require "win32ole"
-      shell = WIN32OLE.new("Shell.Application")
-      folder = shell.BrowseForFolder(0, "选择导入文件夹（包含 .json 和 .png 文件）", 0)
-      if folder
-        path = folder.Self.Path
-        dialog.execute_script("onFolderChange('#{escape_js(path)}')")
-      end
+      path = UI.select_directory(
+        title: "选择导入文件夹（包含 .json 和图片）",
+        directory: @import_folder
+      )
+      return unless path
+
+      @import_folder = path
+      SU_AI_Sync.save_import_folder(path)
+      json_count = File.directory?(path) ? Dir.entries(path).count { |entry| entry.downcase.end_with?(".json") } : 0
+      dialog.execute_script("document.getElementById('folder_input').value = '#{escape_js(path)}';")
+      status = json_count > 0 ? "已找到 #{json_count} 个 .json 文件" : "警告：未找到 .json 文件"
+      dialog.execute_script("document.getElementById('status').textContent = '#{status}';")
     rescue => e
       Logger.error("Browse folder: #{e.message}")
       UI.messagebox("文件夹选择失败: #{e.message}")
@@ -211,7 +215,7 @@ module SU_AI_Sync
         .btn_row{display:flex;gap:8px;margin:8px 0}
         .bottom_bar{display:flex;align-items:center;gap:6px;padding:6px 0;border-top:1px solid #e0e0e0;margin-top:6px}
         </style></head><body><div class="container">
-        <h2>SU+AI 同步 v3.6</h2>
+        <h2>SU+AI 同步 v3.6.2</h2>
         <div style="text-align:center;font-size:12px;color:#999;margin:-10px 0 8px 0">作者：段土土</div>
         <button class="btn btn-primary" onclick="doImport()">导入同步数据</button>
         <div class="row"><label>导入比例:</label>

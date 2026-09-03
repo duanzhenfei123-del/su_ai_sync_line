@@ -3,10 +3,17 @@ require "json"
 require "fileutils"
 
 module SU_AI_Sync
-  VERSION = "3.6"
-  EXPORT_DIR = File.join(ENV["USERPROFILE"], "Desktop", "ai-export").freeze
-  CONFIG_DIR = File.join(ENV["LOCALAPPDATA"], "su_ai_sync", "config").freeze
-  LOG_FILE = File.join(ENV["LOCALAPPDATA"], "su_ai_sync", "logs", "su_sync.log").freeze
+  VERSION = "3.6.2"
+  IS_WINDOWS = Sketchup.platform == :platform_win
+  USER_HOME = (ENV["USERPROFILE"] || ENV["HOME"] || Dir.home).freeze
+  APP_DATA_DIR = if IS_WINDOWS
+                   ENV["LOCALAPPDATA"] || File.join(USER_HOME, "AppData", "Local")
+                 else
+                   File.join(USER_HOME, "Library", "Application Support")
+                 end.freeze
+  EXPORT_DIR = File.join(USER_HOME, "Desktop", "ai-export").freeze
+  CONFIG_DIR = File.join(APP_DATA_DIR, "su_ai_sync", "config").freeze
+  LOG_FILE = File.join(APP_DATA_DIR, "su_ai_sync", "logs", "su_sync.log").freeze
   FOLDER_CONFIG = File.join(CONFIG_DIR, "import_folder.txt").freeze
 
   def self.import_folder
@@ -25,6 +32,8 @@ module SU_AI_Sync
   base = __dir__
   load File.join(base, "su_ai_sync", "logger.rb")
   Logger.info("Logger loaded")
+  load File.join(base, "su_ai_sync", "geometry_math.rb")
+  Logger.info("GeometryMath loaded")
   load File.join(base, "su_ai_sync", "material_manager.rb")
   Logger.info("MaterialManager loaded")
   load File.join(base, "su_ai_sync", "geometry_builder.rb")
