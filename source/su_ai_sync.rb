@@ -42,6 +42,8 @@ module SU_AI_Sync
   Logger.info("LayerLayout loaded")
   load File.join(base, "su_ai_sync", "importer.rb")
   Logger.info("Importer loaded")
+  load File.join(base, "su_ai_sync", "tool_actions.rb")
+  Logger.info("ToolActions loaded")
   load File.join(base, "su_ai_sync", "hot_reloader.rb")
   Logger.info("HotReloader loaded")
   load File.join(base, "su_ai_sync", "ui_manager.rb")

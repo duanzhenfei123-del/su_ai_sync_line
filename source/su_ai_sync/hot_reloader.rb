@@ -12,6 +12,7 @@
           "su_ai_sync/geometry_builder.rb",
           "su_ai_sync/layer_layout.rb",
           "su_ai_sync/importer.rb",
+          "su_ai_sync/tool_actions.rb",
           "su_ai_sync/hot_reloader.rb",
           "su_ai_sync/ui_manager.rb",
           "su_ai_sync.rb"
