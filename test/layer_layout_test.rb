@@ -18,3 +18,14 @@ assert_equal(%w[alpha beta], SU_AI_Sync::LayerLayout.order(without_indexes).map 
 
 assert_equal(20.0, SU_AI_Sync::LayerLayout.offset_mm(0, 3, 10), 'first item is highest')
 assert_equal(0.0, SU_AI_Sync::LayerLayout.offset_mm(2, 3, 10), 'last item is lowest')
+
+paths = [
+  { 'id' => 't1a', 'isTextOutline' => true, 'textGroupId' => 'text_1', 'zIndex' => 1 },
+  { 'id' => 't1b', 'isTextOutline' => true, 'textGroupId' => 'text_1', 'zIndex' => 1 },
+  { 'id' => 'c1a', 'compoundKey' => 'compound_1', 'zIndex' => 2 },
+  { 'id' => 'c1b', 'compoundKey' => 'compound_1', 'zIndex' => 2 },
+  { 'id' => 'plain', 'zIndex' => 3 }
+]
+units = SU_AI_Sync::LayerLayout.path_units(paths)
+assert_equal(3, units.length, 'text and compound contours remain grouped')
+assert_equal(%w[text compound path], units.map { |unit| unit['unitType'] }, 'unit types')

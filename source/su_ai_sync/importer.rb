@@ -6,11 +6,14 @@
       @geometry_builder = GeometryBuilder.new(model, @material_manager)
     end
 
-    def import(scale = 1.0, create_faces = true, curve_segs = 12, import_folder = nil, extrude_thickness = 0)
+    def import(scale = 1.0, create_faces = true, curve_segs = 12,
+               import_folder = nil, extrude_thickness = 0,
+               z_stack = false, layer_gap = 10.0)
       Logger.reset_for_import
       label = create_faces ? "faces on" : "lines only"
       extrude_label = extrude_thickness > 0 ? ", extrude:#{extrude_thickness}mm" : ""
-      Logger.info("=== Import (scale:#{scale}, #{label}#{extrude_label}, segs:#{curve_segs}) ===")
+      z_stack_label = z_stack ? ", zstack:#{LayerLayout.normalize_gap(layer_gap)}mm" : ""
+      Logger.info("=== Import (scale:#{scale}, #{label}#{extrude_label}#{z_stack_label}, segs:#{curve_segs}) ===")
 
       import_path = import_folder || SU_AI_Sync.import_folder
       Logger.info("Import folder: #{import_path}")
@@ -40,53 +43,40 @@
 
         Logger.info("Paths: #{paths.length}, Groups: #{groups.length}, Images: #{images.length}")
 
+        @geometry_builder.soften_enabled = extrude_thickness.to_f > 0
         @model.start_operation("SU+AI Sync Import", true)
         begin
           temp_group = @model.entities.add_group
 
-          text_paths = paths.select do |path_data|
-            path_data['isTextOutline'] || !path_data['textGroupKey'].to_s.empty?
-          end
-          regular_paths = paths - text_paths
-
-          text_paths.group_by { |path_data| path_data['textGroupKey'] || path_data['textGroupId'] || 'text' }.each_value do |outline_paths|
-            text_group = temp_group.entities.add_group
-            text_group.name = "AI文字"
-            # 一个文字组可能包含多个字形外轮廓与内孔；统一按复合路径构建，
-            # 让被外轮廓包住的轮廓成为孔洞，而不是再次生成封面。
-            @geometry_builder.build_compound_path(outline_paths, text_group, effective_scale, create_faces, curve_segs, extrude_thickness)
-          end
-
-          compound_paths = regular_paths.select { |path_data| !path_data['compoundKey'].to_s.empty? }
-          compound_paths.group_by { |path_data| path_data['compoundKey'].to_s }.each_value do |members|
-            path_group = temp_group.entities.add_group
-            @geometry_builder.build_compound_path(members, path_group, effective_scale, create_faces, curve_segs, extrude_thickness)
-          end
-
-          (regular_paths - compound_paths).each do |path_data|
-            path_group = temp_group.entities.add_group
-            @geometry_builder.build_path(path_data, path_group, effective_scale, create_faces, curve_segs, extrude_thickness)
-          end
-
-          groups.each do |group_data|
-            @geometry_builder.build_group(group_data, temp_group, effective_scale, create_faces, curve_segs, extrude_thickness)
-          end
-
-          images.each do |image_data|
-            if image_data['surfacePathId'] && !image_data['surfacePathId'].empty?
-              @geometry_builder.apply_image_to_existing_face(image_data, temp_group, effective_scale)
-            else
-              image_group = temp_group.entities.add_group
-              @geometry_builder.build_image(image_data, image_group, effective_scale, curve_segs)
+          if z_stack
+            items = LayerLayout.path_units(paths) + groups.map do |group|
+              { 'unitType' => 'group', 'zIndex' => group['zIndex'], 'group' => group }
             end
+            ordered = LayerLayout.order(items)
+            ordered.each_with_index do |item, index|
+              layer_group = temp_group.entities.add_group
+              build_layer_item(
+                item, layer_group, effective_scale, create_faces,
+                curve_segs, extrude_thickness
+              )
+              offset = LayerLayout.offset_mm(index, ordered.length, layer_gap)
+              unless offset.zero?
+                layer_group.transform!(
+                  Geom::Transformation.translation([0, 0, offset.mm])
+                )
+              end
+            end
+          else
+            build_flat_import(
+              paths, groups, temp_group, effective_scale, create_faces,
+              curve_segs, extrude_thickness
+            )
           end
+
+          build_images(images, temp_group, effective_scale, curve_segs)
 
           align_bottom_left_to_origin(temp_group)
-          exploded = temp_group.explode
-          if exploded && exploded.length > 0
-            final_group = @model.entities.add_group(exploded)
-            final_group.name = "AI导入 (#{paths.length}p #{groups.length}g)"
-          end
+          temp_group.name = "AI导入 (#{paths.length}p #{groups.length}g)"
 
           @model.commit_operation
 
@@ -108,6 +98,79 @@
     end
 
     private
+
+    def build_flat_import(paths, groups, parent, scale, create_faces, curve_segs, extrude_thickness)
+      text_paths = paths.select do |path|
+        path['isTextOutline'] || !path['textGroupKey'].to_s.empty?
+      end
+      regular_paths = paths - text_paths
+
+      text_paths
+        .group_by { |path| path['textGroupKey'] || path['textGroupId'] || 'text' }
+        .each_value do |members|
+          text_group = parent.entities.add_group
+          text_group.name = 'AI文字'
+          @geometry_builder.build_compound_path(
+            members, text_group, scale, create_faces, curve_segs, extrude_thickness
+          )
+        end
+
+      compound_paths = regular_paths.select { |path| !path['compoundKey'].to_s.empty? }
+      compound_paths.group_by { |path| path['compoundKey'].to_s }.each_value do |members|
+        path_group = parent.entities.add_group
+        @geometry_builder.build_compound_path(
+          members, path_group, scale, create_faces, curve_segs, extrude_thickness
+        )
+      end
+
+      (regular_paths - compound_paths).each do |path|
+        path_group = parent.entities.add_group
+        @geometry_builder.build_path(
+          path, path_group, scale, create_faces, curve_segs, extrude_thickness
+        )
+      end
+
+      groups.each do |group|
+        @geometry_builder.build_group(
+          group, parent, scale, create_faces, curve_segs, extrude_thickness
+        )
+      end
+    end
+
+    def build_layer_item(item, parent, scale, create_faces, curve_segs, extrude_thickness)
+      case item['unitType']
+      when 'text'
+        parent.name = 'AI文字'
+        @geometry_builder.build_compound_path(
+          item['paths'], parent, scale, create_faces, curve_segs, extrude_thickness
+        )
+      when 'compound'
+        @geometry_builder.build_compound_path(
+          item['paths'], parent, scale, create_faces, curve_segs, extrude_thickness
+        )
+      when 'path'
+        @geometry_builder.build_path(
+          item['paths'].first, parent, scale, create_faces, curve_segs, extrude_thickness
+        )
+      when 'group'
+        @geometry_builder.build_group(
+          item['group'], parent, scale, create_faces, curve_segs, extrude_thickness
+        )
+      else
+        raise ArgumentError, "Unknown layer unit: #{item['unitType'].inspect}"
+      end
+    end
+
+    def build_images(images, parent, scale, curve_segs)
+      images.each do |image|
+        if !image['surfacePathId'].to_s.empty?
+          @geometry_builder.apply_image_to_existing_face(image, parent, scale)
+        else
+          image_group = parent.entities.add_group
+          @geometry_builder.build_image(image, image_group, scale, curve_segs)
+        end
+      end
+    end
 
     def snap_group_endpoints!(group, scale)
       repaired = snap_path_endpoints!(group['paths'] || [], scale)

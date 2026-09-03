@@ -20,6 +20,44 @@ module SU_AI_Sync
       (count - 1 - index) * normalize_gap(gap)
     end
 
+    def path_units(paths)
+      units = []
+      grouped = {}
+
+      paths.each do |path|
+        text_key = [path['textGroupKey'], path['textGroupId']]
+                   .find { |value| !value.to_s.empty? }
+        if text_key || path['isTextOutline']
+          key = [:text, text_key || '__unkeyed_text__']
+          unit = grouped[key] ||= begin
+            created = { 'unitType' => 'text', 'zIndex' => path['zIndex'], 'paths' => [] }
+            units << created
+            created
+          end
+          unit['zIndex'] ||= path['zIndex']
+          unit['paths'] << path
+          next
+        end
+
+        compound_key = path['compoundKey'].to_s
+        unless compound_key.empty?
+          key = [:compound, compound_key]
+          unit = grouped[key] ||= begin
+            created = { 'unitType' => 'compound', 'zIndex' => path['zIndex'], 'paths' => [] }
+            units << created
+            created
+          end
+          unit['zIndex'] ||= path['zIndex']
+          unit['paths'] << path
+          next
+        end
+
+        units << { 'unitType' => 'path', 'zIndex' => path['zIndex'], 'paths' => [path] }
+      end
+
+      units
+    end
+
     def numeric_z_index(value)
       return nil if value.nil? || value.to_s.strip.empty?
 
