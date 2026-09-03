@@ -38,6 +38,8 @@ module SU_AI_Sync
   Logger.info("MaterialManager loaded")
   load File.join(base, "su_ai_sync", "geometry_builder.rb")
   Logger.info("GeometryBuilder loaded")
+  load File.join(base, "su_ai_sync", "layer_layout.rb")
+  Logger.info("LayerLayout loaded")
   load File.join(base, "su_ai_sync", "importer.rb")
   Logger.info("Importer loaded")
   load File.join(base, "su_ai_sync", "hot_reloader.rb")

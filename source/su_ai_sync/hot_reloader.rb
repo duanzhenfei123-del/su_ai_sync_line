@@ -10,6 +10,7 @@
           "su_ai_sync/geometry_math.rb",
           "su_ai_sync/material_manager.rb",
           "su_ai_sync/geometry_builder.rb",
+          "su_ai_sync/layer_layout.rb",
           "su_ai_sync/importer.rb",
           "su_ai_sync/hot_reloader.rb",
           "su_ai_sync/ui_manager.rb",
