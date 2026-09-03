@@ -66,11 +66,18 @@ module SU_AI_Sync
     curve_segs = Sketchup.read_default("su_ai_sync", "segs", 12).to_i
     extrude_enabled = Sketchup.read_default("su_ai_sync", "extrude_enabled", 0).to_i == 1
     extrude_thickness = extrude_enabled ? Sketchup.read_default("su_ai_sync", "extrude_thickness", 10.0).to_f : 0
+    z_stack = Sketchup.read_default("su_ai_sync", "z_stack", 0).to_i == 1
+    layer_gap = LayerLayout.normalize_gap(
+      Sketchup.read_default("su_ai_sync", "layer_gap", 10.0)
+    )
 
-    Logger.info("=== Quick import (scale:#{scale}, faces:#{create_faces}, segs:#{curve_segs}, extrude:#{extrude_thickness}) ===")
+    Logger.info("=== Quick import (scale:#{scale}, faces:#{create_faces}, segs:#{curve_segs}, extrude:#{extrude_thickness}, zstack:#{z_stack ? layer_gap : '-'}) ===")
 
     importer = Importer.new(model)
-    result = importer.import(scale, create_faces, curve_segs, import_folder, extrude_thickness)
+    result = importer.import(
+      scale, create_faces, curve_segs, import_folder, extrude_thickness,
+      z_stack, layer_gap
+    )
 
     if result[:success]
       parts = []

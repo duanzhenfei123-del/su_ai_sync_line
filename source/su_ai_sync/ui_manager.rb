@@ -12,6 +12,10 @@ module SU_AI_Sync
       @curve_segs = Sketchup.read_default(PLUGIN, "segs", 12).to_i
       @extrude_enabled = Sketchup.read_default(PLUGIN, "extrude_enabled", 0).to_i == 1
       @extrude_thickness = Sketchup.read_default(PLUGIN, "extrude_thickness", 10.0).to_f
+      @z_stack_enabled = Sketchup.read_default(PLUGIN, "z_stack", 0).to_i == 1
+      @layer_gap = LayerLayout.normalize_gap(
+        Sketchup.read_default(PLUGIN, "layer_gap", 10.0)
+      )
       @import_folder = SU_AI_Sync.import_folder
       Logger.info("UI_Manager: import_folder = #{@import_folder}")
     end
@@ -50,7 +54,10 @@ module SU_AI_Sync
         end
         effective_extrude = @extrude_enabled ? @extrude_thickness : 0
         Logger.info("Import extrude=#{effective_extrude} (enabled=#{@extrude_enabled})")
-        result = Importer.new(model).import(@scale, @create_faces, @curve_segs, @import_folder, effective_extrude)
+        result = Importer.new(model).import(
+          @scale, @create_faces, @curve_segs, @import_folder, effective_extrude,
+          @z_stack_enabled, @layer_gap
+        )
         status = result[:message] || "导入完成"
         dialog.execute_script("document.getElementById('status').textContent = '#{escape_js(status)}';")
       end
@@ -102,6 +109,39 @@ module SU_AI_Sync
         if value
           @create_faces = true
           Sketchup.write_default(PLUGIN, "faces", 1)
+        end
+      end
+
+      dialog.add_action_callback("set_z_stack") do |_ctx, value|
+        @z_stack_enabled = value == true
+        Sketchup.write_default(PLUGIN, "z_stack", @z_stack_enabled ? 1 : 0)
+      end
+
+      dialog.add_action_callback("set_layer_gap") do |_ctx, value|
+        @layer_gap = LayerLayout.normalize_gap(value)
+        Sketchup.write_default(PLUGIN, "layer_gap", @layer_gap)
+      end
+
+      dialog.add_action_callback("drop_to_surface") do |_ctx|
+        begin
+          moved = ToolActions.drop_selection(Sketchup.active_model)
+          if moved > 0
+            dialog.execute_script(
+              "document.getElementById('status').textContent = '已坐落 #{moved} 个对象';"
+            )
+          end
+        rescue StandardError => error
+          Logger.error("Drop to surface failed: #{error.message}")
+          UI.messagebox("落面失败: #{error.message}")
+        end
+      end
+
+      dialog.add_action_callback("import_texture_aligned") do |_ctx|
+        image = ToolActions.import_texture_aligned(Sketchup.active_model)
+        if image
+          dialog.execute_script(
+            "document.getElementById('status').textContent = '贴图已按选择对象对齐';"
+          )
         end
       end
 
@@ -175,6 +215,9 @@ module SU_AI_Sync
       extrude_btn_class = @extrude_enabled ? "btn-on" : "btn-off"
       extrude_btn_text = ""
       extrude_row_display = @extrude_enabled ? "flex" : "none"
+      z_stack_btn_class = @z_stack_enabled ? "btn-on" : "btn-off"
+      z_stack_btn_text = @z_stack_enabled ? "按图层叠放：开" : "按图层叠放：关"
+      layer_gap_display = @z_stack_enabled ? "flex" : "none"
 
       ext_placeholder = @extrude_enabled ? "" : " style=\"display:none\""
 
@@ -234,6 +277,17 @@ module SU_AI_Sync
         <div class="row" id="extrudeRow" style="display:#{extrude_row_display}"><label>挤出厚度(mm):</label><input type="number" id="extrudeInput" value="#{@extrude_thickness}" min="0.1" step="1" style="width:80px;flex:none;padding:6px;border:1px solid #ccc;border-radius:4px;font-size:13px" onchange="sketchup.set_extrude(this.value)"></div>
         <div class="status" id="status">等待导入...</div>
         <div class="divider"></div>
+        <div style="font-size:13px;color:#333;font-weight:bold;margin:8px 0 4px 0">图层与辅助工具</div>
+        <button class="btn #{z_stack_btn_class}" id="zStackBtn" onclick="toggleZStack()">#{z_stack_btn_text}</button>
+        <div class="row" id="layerGapRow" style="display:#{layer_gap_display}">
+          <label>层间距(mm):</label>
+          <input type="number" id="layerGapInput" value="#{@layer_gap}" min="0.1" step="1" style="width:80px;flex:none;padding:6px;border:1px solid #ccc;border-radius:4px;font-size:13px" onchange="sketchup.set_layer_gap(this.value)">
+        </div>
+        <div class="btn_row">
+          <button class="btn btn-secondary" onclick="sketchup.drop_to_surface()" style="flex:1">坐落物体表面</button>
+          <button class="btn btn-secondary" onclick="sketchup.import_texture_aligned()" style="flex:1">导入贴图对齐</button>
+        </div>
+        <div class="divider"></div>
         <div style="font-size:13px;color:#333;font-weight:bold;margin:8px 0 4px 0">导入文件夹</div>
         <div class="folder_row">
           <input type="text" class="folder_input" id="folder_input" value="#{folder_display}" placeholder="粘贴路径后按 Enter 确认..." onchange="onFolderChange(this.value)" onkeydown="if(event.key==='Enter')onFolderChange(this.value)">
@@ -280,6 +334,15 @@ module SU_AI_Sync
           btn.className = 'btn ' + (isOn ? 'btn-on' : 'btn-off');
           document.getElementById('extrudeRow').style.display = isOn ? 'flex' : 'none';
           if(isOn)sketchup.set_extrude(document.getElementById('extrudeInput').value);
+        }
+        function toggleZStack(){
+          var button = document.getElementById('zStackBtn');
+          var enabled = !button.classList.contains('btn-on');
+          button.className = 'btn ' + (enabled ? 'btn-on' : 'btn-off');
+          button.textContent = enabled ? '按图层叠放：开' : '按图层叠放：关';
+          document.getElementById('layerGapRow').style.display = enabled ? 'flex' : 'none';
+          sketchup.set_z_stack(enabled);
+          if(enabled)sketchup.set_layer_gap(document.getElementById('layerGapInput').value);
         }
         function onFolderChange(val){if(val.trim())sketchup.set_folder_path(val);}
         </script></body></html>
