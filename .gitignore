@@ -18,6 +18,7 @@ vendor/bundle/
 *.log
 tmp/
 temp/
+.worktrees/
 
 # Packaging and local exports
 dist/
