@@ -1,0 +1,28 @@
+{
+  "version": "test",
+  "scale": 1.0,
+  "paths": [
+    {
+      "id": "front",
+      "name": "front",
+      "zIndex": 1,
+      "verticesMM": [[0, 0], [20, 0], [20, 20], [0, 20]],
+      "curves": [],
+      "isClosed": true,
+      "fillColor": "ff0000",
+      "strokeWidthMM": 0
+    },
+    {
+      "id": "back",
+      "name": "back",
+      "zIndex": 2,
+      "verticesMM": [[30, 0], [50, 0], [50, 20], [30, 20]],
+      "curves": [],
+      "isClosed": true,
+      "fillColor": "00ff00",
+      "strokeWidthMM": 0
+    }
+  ],
+  "groups": [],
+  "images": []
+}
