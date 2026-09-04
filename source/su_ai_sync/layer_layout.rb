@@ -12,7 +12,7 @@ module SU_AI_Sync
       return items.dup if indexes.any?(&:nil?) || indexes.uniq.length <= 1
 
       items.each_with_index
-           .sort_by { |item, original| [numeric_z_index(item['zIndex']), original] }
+           .sort_by { |item, original| [-numeric_z_index(item['zIndex']), original] }
            .map { |item, _original| item }
     end
 

@@ -127,6 +127,7 @@ function fakeTextWithCompoundOutline() {
     remove: function () {}
   };
   return {
+    zOrderPosition: 9,
     duplicate: function () {
       return { createOutline: function () { return outline; } };
     }
@@ -135,6 +136,13 @@ function fakeTextWithCompoundOutline() {
 
 assert.strictEqual(context.itemZIndex({ zOrderPosition: 7 }, 3), 7);
 assert.strictEqual(context.itemZIndex({}, 3), 3);
+const lowerItem = { zOrderPosition: 7 };
+const upperItem = { zOrderPosition: 7 };
+const mixedParent = { pageItems: [upperItem, lowerItem] };
+lowerItem.parent = mixedParent;
+upperItem.parent = mixedParent;
+assert.strictEqual(context.itemZIndex(upperItem, 0), 2);
+assert.strictEqual(context.itemZIndex(lowerItem, 0), 1);
 
 const grouped = context.gd(fakeGroupWithPath(7), 1);
 assert.strictEqual(grouped.zIndex, 7);
@@ -145,15 +153,19 @@ assert.strictEqual(strokeGroups[0].zIndex, 7);
 
 context.COMPOUND_COUNTER = 0;
 const compoundPaths = [];
-context.aCP({ name: 'ring', pathItems: [square(1, false), square(1, false)] }, compoundPaths, 1);
+context.aCP({ name: 'ring', zOrderPosition: 8, pathItems: [square(1, false), square(1, false)] }, compoundPaths, 1);
 assert.strictEqual(compoundPaths.length, 2);
 assert.strictEqual(compoundPaths[0].compoundKey, 'compound_0000');
 assert.strictEqual(compoundPaths[1].compoundKey, compoundPaths[0].compoundKey);
+assert.strictEqual(compoundPaths[0].zIndex, 8);
+assert.strictEqual(compoundPaths[1].zIndex, 8);
 
 const outlined = context.otl(fakeTextWithCompoundOutline(), 1);
 assert.strictEqual(outlined.length, 2);
 assert.strictEqual(outlined[0].textGroupKey, outlined[0].textGroupId);
 assert.strictEqual(outlined[1].textGroupKey, outlined[0].textGroupId);
+assert.strictEqual(outlined[0].zIndex, 9);
+assert.strictEqual(outlined[1].zIndex, 9);
 
 assert.strictEqual(context.ownedSyncFile('sync_2026-01-01.json'), true);
 assert.strictEqual(context.ownedSyncFile('latest_sync.json.tmp'), true);
@@ -183,6 +195,24 @@ assert.strictEqual(memoryFiles.has('C:/out/photo.png'), true);
 assert.deepStrictEqual(Array.from(memoryFiles.keys()).filter(function (name) {
   return /\.log$/i.test(name);
 }), []);
+
+let movingZ = 2;
+const movingPath = square(2, false);
+Object.defineProperty(movingPath, 'zOrderPosition', { get: function () { return movingZ; } });
+const shiftingText = fakeTextWithCompoundOutline();
+shiftingText.typename = 'TextFrame';
+const originalDuplicate = shiftingText.duplicate;
+shiftingText.duplicate = function () { movingZ = 3; return originalDuplicate(); };
+context.app.activeDocument = {
+  name: 'stack.ai',
+  width: 100,
+  height: 100,
+  selection: [shiftingText, movingPath]
+};
+const stackedExport = JSON.parse(context.exportSelectionAsJSON('C:/out'));
+assert.strictEqual(stackedExport.errors.length, 0);
+const stackedJson = JSON.parse(memoryFiles.get('C:/out/latest_sync.json'));
+assert.strictEqual(stackedJson.paths.filter(function (item) { return item.name === 'square'; })[0].zIndex, 2);
 
 memoryFiles.clear();
 memoryFiles.set('C:/out/latest_sync.json', 'known good');

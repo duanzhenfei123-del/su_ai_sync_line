@@ -67,6 +67,10 @@ var TOL=0.01;
 var TEXT_OUTLINE_COUNTER=0;
 var COMPOUND_COUNTER=0;
 function itemZIndex(item,fallback){
+    try{
+        var siblings=item.parent&&item.parent.pageItems;
+        if(siblings){for(var i=0;i<siblings.length;i++){if(siblings[i]===item)return siblings.length-i}}
+    }catch(e){}
     try{if(item.zOrderPosition!==undefined)return Number(item.zOrderPosition)}catch(e){}
     return Number(fallback||0);
 }
@@ -294,7 +298,8 @@ function aP(item,ps,s){
 
 function aCP(item,ps,s,compoundKey){
     var key=compoundKey||nextCompoundKey();
-    for(var i=0;i<item.pathItems.length;i++){var d=pd(item.pathItems[i],s);d.id="p_"+padZero(ps.length,3);d.name=item.name||("p"+ps.length);d.compoundKey=key;ps.push(d);}
+    var zIndex=itemZIndex(item,0);
+    for(var i=0;i<item.pathItems.length;i++){var d=pd(item.pathItems[i],s);d.id="p_"+padZero(ps.length,3);d.name=item.name||("p"+ps.length);d.compoundKey=key;d.zIndex=zIndex;ps.push(d);}
 }
 
 function addPathAsGroup(item, targetPaths, targetGroups, scale){
@@ -356,6 +361,7 @@ function otl(item,s){
     log("otl: outline");
     var o=[];
     var textGroupId="text_"+padZero(TEXT_OUTLINE_COUNTER++,4);
+    var textZIndex=itemZIndex(item,0);
     try{
         var c=item.duplicate();var r=c.createOutline();var t=(r&&r.typename)?r:c;
         if(t.typename==="GroupItem"){
@@ -373,6 +379,7 @@ function otl(item,s){
             o[k].isTextOutline=true;
             o[k].textGroupId=textGroupId;
             o[k].textGroupKey=textGroupId;
+            o[k].zIndex=textZIndex;
         }
     }catch(e){log("otl error:"+e.message)}
     return o;
@@ -437,13 +444,18 @@ function exportSelectionAsJSON(folderPath) {
         if (!sel || sel.length < 1) { result.total = 0; return _jsonStringify(result); }
         result.total = sel.length;
         var s = 1; var paths = []; var groups = []; var images = [];
+        var selectionZ = [];
+        for (var zi = 0; zi < sel.length; zi++) selectionZ.push(itemZIndex(sel[zi], zi));
         for (var i = 0; i < sel.length; i++) {
+            var pathStart = paths.length; var groupStart = groups.length;
             var item = sel[i]; var t = item.typename;
             if (t === "GroupItem") { groups.push(gd(item, s)); }
             else if (t === "TextFrame" || t === "TextArtItem") { var tp = otl(item, s); for (var j = 0; j < tp.length; j++) paths.push(tp[j]); }
             else if (t === "PathItem") { addPathAsGroup(item, paths, groups, s); }
             else if (t === "RasterItem" || t === "PlacedItem") { if (!item.stroked || item.strokeWidth <= 0) paths.push(imgOutline(item)); }
             else if (t === "CompoundPathItem") { aCP(item, paths, s); }
+            for (var pi = pathStart; pi < paths.length; pi++) paths[pi].zIndex = selectionZ[i];
+            for (var gi = groupStart; gi < groups.length; gi++) groups[gi].zIndex = selectionZ[i];
         }
         var jsonFileName = "latest_sync.json";
         var jsonFilePath = folderPath + "/" + jsonFileName;
