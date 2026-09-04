@@ -135,8 +135,8 @@
       if create_faces && paths.any? { |p| p['isImageSurface'] }
         build_image_surface_from_paths(paths, g, scale, curve_segs, extrude_thickness)
       else
-        text_paths = paths.select { |path| !path['textGroupKey'].to_s.empty? }
-        text_paths.group_by { |path| path['textGroupKey'].to_s }.each do |key, members|
+        text_paths = paths.select { |path| text_path?(path) }
+        text_paths.group_by { |path| text_group_key(path) }.each do |key, members|
           text_group = g.entities.add_group
           text_group.name = "AI_Text_#{key.sub(/^text_/, '')}"
           build_compound_path(members, text_group, scale, create_faces, curve_segs, extrude_thickness, material_mode)
@@ -817,6 +817,17 @@
     end
 
     private
+
+    def text_path?(path)
+      path['isTextOutline'] ||
+        !path['textGroupKey'].to_s.empty? ||
+        !path['textGroupId'].to_s.empty?
+    end
+
+    def text_group_key(path)
+      [path['textGroupKey'], path['textGroupId']]
+        .find { |value| !value.to_s.empty? } || 'text'
+    end
 
     def fast_prism_eligible?(data, extrude_thickness)
       extrude_thickness.to_f > 0 &&

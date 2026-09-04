@@ -30,12 +30,13 @@
 
       begin
         data = JSON.parse(File.read(json_file, encoding: "UTF-8"))
+        validate_data!(data)
         Logger.info("JSON parsed: version #{data["version"] || "unknown"}")
 
         effective_scale = (data["scale"] || 1.0) * scale
 
         paths = normalize_paths(data, import_path)
-        groups = data["groups"] || []
+        groups = (data["groups"] || []).map { |group| normalize_group(group) }
         images = normalize_images(data, import_path)
         repaired = snap_path_endpoints!(paths, effective_scale)
         groups.each { |group| repaired += snap_group_endpoints!(group, effective_scale) }
@@ -99,14 +100,40 @@
 
     private
 
-    def build_flat_import(paths, groups, parent, scale, create_faces, curve_segs, extrude_thickness)
-      text_paths = paths.select do |path|
-        path['isTextOutline'] || !path['textGroupKey'].to_s.empty?
+    def validate_data!(data)
+      raise ArgumentError, '同步数据根节点必须是对象' unless data.is_a?(Hash)
+
+      raw_version = data.fetch('schemaVersion', 1)
+      begin
+        version = Integer(raw_version)
+      rescue ArgumentError, TypeError
+        raise ArgumentError, "无效的数据协议版本: #{raw_version.inspect}"
       end
+      raise ArgumentError, "不支持的数据协议版本: #{version}" unless [1, 2].include?(version)
+
+      %w[paths groups images].each do |key|
+        raise ArgumentError, "#{key} 必须是数组" if data.key?(key) && !data[key].is_a?(Array)
+      end
+      version
+    end
+
+    def text_path?(path)
+      path['isTextOutline'] ||
+        !path['textGroupKey'].to_s.empty? ||
+        !path['textGroupId'].to_s.empty?
+    end
+
+    def text_group_key(path)
+      [path['textGroupKey'], path['textGroupId']]
+        .find { |value| !value.to_s.empty? } || 'text'
+    end
+
+    def build_flat_import(paths, groups, parent, scale, create_faces, curve_segs, extrude_thickness)
+      text_paths = paths.select { |path| text_path?(path) }
       regular_paths = paths - text_paths
 
       text_paths
-        .group_by { |path| path['textGroupKey'] || path['textGroupId'] || 'text' }
+        .group_by { |path| text_group_key(path) }
         .each_value do |members|
           text_group = parent.entities.add_group
           text_group.name = 'AI文字'
@@ -229,11 +256,12 @@
       return nil unless File.directory?(directory)
       latest = File.join(directory, "latest_sync.json")
       return latest if File.exist?(latest)
-      Dir.entries(directory).each do |entry|
-        next unless entry.downcase.end_with?(".json")
-        candidate = File.join(directory, entry)
-        return candidate if File.file?(candidate)
-      end
+      legacy = Dir.children(directory)
+                  .select { |entry| entry.match?(/^sync_.*\.json$/i) }
+                  .map { |entry| File.join(directory, entry) }
+                  .select { |candidate| File.file?(candidate) }
+                  .max_by { |candidate| File.mtime(candidate) }
+      return legacy if legacy
       Logger.info("locate_json: no json found")
       nil
     end
@@ -271,6 +299,13 @@
         "strokeColor" => stroke_rgb.is_a?(Array) ? stroke_rgb.map { |c| c.to_s(16).rjust(2, "0") }.join : nil,
         "strokeWidthMM" => item["sw"] || 0
       }
+    end
+
+    def normalize_group(group)
+      normalized = group.dup
+      normalized['paths'] = (group['paths'] || []).map { |path| normalize_path(path) }
+      normalized['groups'] = (group['groups'] || []).map { |child| normalize_group(child) }
+      normalized
     end
 
     def normalize_images(data, directory)
