@@ -302,6 +302,8 @@
     end
 
     def normalize_group(group)
+      raise ArgumentError, 'group 必须是对象' unless group.is_a?(Hash)
+
       normalized = group.dup
       normalized['paths'] = (group['paths'] || []).map { |path| normalize_path(path) }
       normalized['groups'] = (group['groups'] || []).map { |child| normalize_group(child) }
