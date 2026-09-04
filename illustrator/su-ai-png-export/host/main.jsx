@@ -58,6 +58,12 @@ function hex(c){var rgb=colorToRGB(c);if(!rgb)return"";var h=(rgb[0]*65536+rgb[1
 function esc(s){return String(s).replace(/\\/g,"\\\\").replace(/"/g,'\\"').replace(/\n/g,"\\n")}
 var TOL=0.01;
 var TEXT_OUTLINE_COUNTER=0;
+var COMPOUND_COUNTER=0;
+function itemZIndex(item,fallback){
+    try{if(item.zOrderPosition!==undefined)return Number(item.zOrderPosition)}catch(e){}
+    return Number(fallback||0);
+}
+function nextCompoundKey(){return "compound_"+padZero(COMPOUND_COUNTER++,4)}
 function isLine(cur,nxt){
     return Math.abs(cur.anchor[0]-cur.rightDirection[0])<TOL&&Math.abs(cur.anchor[1]-cur.rightDirection[1])<TOL&&Math.abs(nxt.anchor[0]-nxt.leftDirection[0])<TOL&&Math.abs(nxt.anchor[1]-nxt.leftDirection[1])<TOL;
 }
@@ -249,7 +255,7 @@ function pd(item,s){
             cv.push([r4(mm(c.rightDirection[0])*s),r4(mm(c.rightDirection[1])*s),r4(mm(nx.leftDirection[0])*s),r4(mm(nx.leftDirection[1])*s)]);
         }else{cv.push(null);}
     }
-    return{vs:vs,cv:cv,cl:cl,fc:item.filled?hex(item.fillColor):"",sc:item.stroked?hex(item.strokeColor):"",sw:item.stroked?r4(mm(item.strokeWidth)*s):0,sp:(function(){if(!item.stroked)return"none";try{var a=item.strokeAlignment;if(a===1||a==StrokeAlignment.INSIDE)return"inside";if(a===2||a==StrokeAlignment.OUTSIDE)return"outside"}catch(e){}try{var p=item.strokePosition;if(p===1||p==StrokePosition.INSIDE)return"inside";if(p===2||p==StrokePosition.OUTSIDE)return"outside"}catch(e){}return"center"})(),"zIndex":item.zIndex||0};
+    return{vs:vs,cv:cv,cl:cl,fc:item.filled?hex(item.fillColor):"",sc:item.stroked?hex(item.strokeColor):"",sw:item.stroked?r4(mm(item.strokeWidth)*s):0,sp:(function(){if(!item.stroked)return"none";try{var a=item.strokeAlignment;if(a===1||a==StrokeAlignment.INSIDE)return"inside";if(a===2||a==StrokeAlignment.OUTSIDE)return"outside"}catch(e){}try{var p=item.strokePosition;if(p===1||p==StrokePosition.INSIDE)return"inside";if(p===2||p==StrokePosition.OUTSIDE)return"outside"}catch(e){}return"center"})(),"zIndex":itemZIndex(item,0)};
 }
 
 function aP(item,ps,s){
@@ -281,8 +287,9 @@ function aP(item,ps,s){
     }
 }
 
-function aCP(item,ps,s){
-    for(var i=0;i<item.pathItems.length;i++){var d=pd(item.pathItems[i],s);d.id="p_"+padZero(ps.length,3);d.name=item.name||("p"+ps.length);ps.push(d);}
+function aCP(item,ps,s,compoundKey){
+    var key=compoundKey||nextCompoundKey();
+    for(var i=0;i<item.pathItems.length;i++){var d=pd(item.pathItems[i],s);d.id="p_"+padZero(ps.length,3);d.name=item.name||("p"+ps.length);d.compoundKey=key;ps.push(d);}
 }
 
 function addPathAsGroup(item, targetPaths, targetGroups, scale){
@@ -296,7 +303,7 @@ function addPathAsGroup(item, targetPaths, targetGroups, scale){
         var off2 = offsetOpenPath(vs, -sw / 2);
         var ribbon = off1.concat(off2.reverse());
         var fillHex = item.stroked ? hex(item.strokeColor) : "";
-        targetPaths.push({vs: ribbon, cv: [], cl: true, fc: fillHex, sc: "", sw: 0, sp: "none", zIndex: item.zIndex || 0,
+        targetPaths.push({vs: ribbon, cv: [], cl: true, fc: fillHex, sc: "", sw: 0, sp: "none", zIndex: itemZIndex(item,0),
             id: "p_" + padZero(targetPaths.length, 3),
             name: item.name || ("p"+targetPaths.length)});
         return;
@@ -319,9 +326,9 @@ function addPathAsGroup(item, targetPaths, targetGroups, scale){
             fillPath.sp = "none";
             fillPath.id = "p_" + padZero(targetPaths.length, 3);
             var strokeGroup = {name: "stroke", paths: expanded, groups: []};
-            targetGroups.push({name: groupName, paths: [fillPath], zIndex: item.zIndex || 0, groups: [strokeGroup]});
+            targetGroups.push({name: groupName, paths: [fillPath], zIndex: itemZIndex(item,0), groups: [strokeGroup]});
         } else {
-            targetGroups.push({name: groupName, paths: expanded, zIndex: item.zIndex || 0, groups: []});
+            targetGroups.push({name: groupName, paths: expanded, zIndex: itemZIndex(item,0), groups: []});
         }
     } else {
         for (var k = 0; k < expanded.length; k++) targetPaths.push(expanded[k]);
@@ -330,7 +337,7 @@ function addPathAsGroup(item, targetPaths, targetGroups, scale){
 
 function gd(item,s){
     log("gd: group " + (item.name||"unnamed"));
-    var g={name:item.name||"G",paths:[],groups:[],zIndex:item.zIndex||0};
+    var g={name:item.name||"G",paths:[],groups:[],zIndex:itemZIndex(item,0)};
     for(var i=0;i<item.pageItems.length;i++){var c=item.pageItems[i];var t=c.typename;
         if(t==="GroupItem")g.groups.push(gd(c,s));
         else if(t==="TextFrame"||t==="TextArtItem"){var o=otl(c,s);for(var j=0;j<o.length;j++)g.paths.push(o[j]);}
@@ -360,6 +367,7 @@ function otl(item,s){
         for(var k=0;k<o.length;k++){
             o[k].isTextOutline=true;
             o[k].textGroupId=textGroupId;
+            o[k].textGroupKey=textGroupId;
         }
     }catch(e){log("otl error:"+e.message)}
     return o;
@@ -368,43 +376,7 @@ function otl(item,s){
 function imgOutline(item){
     var b=item.visibleBounds;
     var vs=[[r4(mm(b[0])),r4(mm(b[1]))],[r4(mm(b[2])),r4(mm(b[1]))],[r4(mm(b[2])),r4(mm(b[3]))],[r4(mm(b[0])),r4(mm(b[3]))]];
-    return{id:"img_"+Math.random().toString(36).substr(2,9),name:item.name||"Image",cl:true,fc:"",sc:"000000",sw:0,sp:"center",zIndex:item.zIndex||0,vs:vs};
-}
-
-function writeJson(doc,paths,groups,w,h,s){
-    log("writeJson: writing ?"+(groups.length>0?groups.length+"g ":"")+paths.length+"p");
-    var f = new File(CFG.json);
-    f.encoding = "UTF-8";
-    f.open("w");
-    f.write('{"version":"'+VERSION+'","units":"mm","scale":'+s);
-    f.write(',"document":{"name":"'+esc(doc.name)+'","widthMM":'+mm(w)+',"heightMM":'+mm(h)+'}');
-    f.write(',"paths":[');
-    for(var i=0;i<paths.length;i++){var p=paths[i];
-        f.write('{"id":"'+p.id+'","name":"'+esc(p.name)+'","isClosed":'+p.cl);
-        f.write(',"fillColor":"'+p.fc+'","strokeColor":"'+p.sc+'","strokeWidthMM":'+p.sw+',"sp":"'+p.sp+'"');
-          f.write(',"zIndex":'+(p.zIndex||0));
-        if(p.isTextOutline)f.write(',"isTextOutline":true,"textGroupId":"'+esc(p.textGroupId)+'"');
-        f.write(',"verticesMM":[');
-        for(var v=0;v<p.vs.length;v++){f.write("["+p.vs[v][0]+","+p.vs[v][1]+"]");if(v<p.vs.length-1)f.write(",")}
-        f.write("]");
-        if(p.cv&&p.cv.length>0){
-            f.write(',"curves":[');
-            for(var j=0;j<p.cv.length;j++){
-                var cv=p.cv[j];
-                if(cv){f.write('{"c1":['+cv[0]+","+cv[1]+'],"c2":['+cv[2]+","+cv[3]+']}');}
-                else{f.write("null");}
-                if(j<p.cv.length-1)f.write(",");
-            }
-            f.write("]");
-        }
-        f.write("}");
-        if(i<paths.length-1)f.write(",");
-    }
-    f.write('],"groups":[');
-    for(var i=0;i<groups.length;i++){wg(groups[i],f);if(i<groups.length-1)f.write(",");}
-    f.write('],"images":[]}');
-    f.close();
-    log("writeJson: done -> " + CFG.json);
+    return{id:"img_"+Math.random().toString(36).substr(2,9),name:item.name||"Image",cl:true,fc:"",sc:"000000",sw:0,sp:"center",zIndex:itemZIndex(item,0),vs:vs};
 }
 
 function wg(g,f){
@@ -413,7 +385,8 @@ function wg(g,f){
         f.write('{"id":"'+p.id+'","name":"'+esc(p.name)+'","isClosed":'+p.cl);
         f.write(',"fillColor":"'+p.fc+'","strokeColor":"'+p.sc+'","strokeWidthMM":'+p.sw+',"sp":"'+p.sp+'"');
           f.write(',"zIndex":'+(p.zIndex||0));
-        if(p.isTextOutline)f.write(',"isTextOutline":true,"textGroupId":"'+esc(p.textGroupId)+'"');
+        if(p.compoundKey)f.write(',"compoundKey":"'+esc(p.compoundKey)+'"');
+        if(p.isTextOutline)f.write(',"isTextOutline":true,"textGroupId":"'+esc(p.textGroupId)+'","textGroupKey":"'+esc(p.textGroupKey)+'"');
         f.write(',"verticesMM":[');
         for(var v=0;v<p.vs.length;v++){f.write("["+p.vs[v][0]+","+p.vs[v][1]+"]");if(v<p.vs.length-1)f.write(",")}
         f.write("]");
@@ -461,6 +434,8 @@ function exportSelectionAsJSON(folderPath) {
     } catch(ce) {}
     var result = { count: 0, total: 0, errors: [], jsonFile: "" };
     try {
+        TEXT_OUTLINE_COUNTER = 0;
+        COMPOUND_COUNTER = 0;
         var doc = app.activeDocument;
         var sel = doc.selection;
         if (!sel || sel.length < 1) { result.total = 0; return _jsonStringify(result); }
@@ -488,7 +463,8 @@ function exportSelectionAsJSON(folderPath) {
             f.write('{"id":"'+(p.id||"p_"+padZero(i,3))+'","name":"'+esc(p.name)+'","isClosed":'+p.cl);
             f.write(',"fillColor":"'+p.fc+'","strokeColor":"'+p.sc+'","strokeWidthMM":'+p.sw+',"sp":"'+(p.sp||"center")+'"');
             f.write(',"zIndex":'+(p.zIndex||0));
-            if(p.isTextOutline)f.write(',"isTextOutline":true,"textGroupId":"'+esc(p.textGroupId)+'"');
+            if(p.compoundKey)f.write(',"compoundKey":"'+esc(p.compoundKey)+'"');
+            if(p.isTextOutline)f.write(',"isTextOutline":true,"textGroupId":"'+esc(p.textGroupId)+'","textGroupKey":"'+esc(p.textGroupKey)+'"');
             f.write(',"verticesMM":[');
             for (var v = 0; v < p.vs.length; v++) { f.write("["+p.vs[v][0]+","+p.vs[v][1]+"]"); if (v < p.vs.length-1) f.write(","); }
             f.write("]");
