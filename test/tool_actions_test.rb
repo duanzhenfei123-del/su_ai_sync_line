@@ -60,6 +60,40 @@ ensure
   erase_tool_action_fixtures(model, [unsupported])
 end
 
+low_support = nil
+high_support = nil
+wide_floating = nil
+begin
+  model.start_operation('mixed-height drop test setup', true)
+  low_support = model.entities.add_group
+  low_support.entities.add_face(
+    [0, 0, 0], [40.mm, 0, 0], [40.mm, 100.mm, 0], [0, 100.mm, 0]
+  ).pushpull(10.mm)
+  low_support.transform!(Geom::Transformation.translation([0, 0, -low_support.bounds.min.z]))
+
+  high_support = model.entities.add_group
+  high_support.entities.add_face(
+    [45.mm, 0, 0], [100.mm, 0, 0], [100.mm, 100.mm, 0], [45.mm, 100.mm, 0]
+  ).pushpull(20.mm)
+  high_support.transform!(Geom::Transformation.translation([0, 0, -high_support.bounds.min.z]))
+
+  wide_floating = model.entities.add_group
+  wide_floating.entities.add_face(
+    [0, 0, 0], [100.mm, 0, 0], [100.mm, 100.mm, 0], [0, 100.mm, 0]
+  ).pushpull(5.mm)
+  wide_floating.transform!(
+    Geom::Transformation.translation([0, 0, 30.mm - wide_floating.bounds.min.z])
+  )
+  model.commit_operation
+  model.selection.clear
+  model.selection.add(wide_floating)
+
+  assert_equal(1, SU_AI_Sync::ToolActions.drop_selection(model), 'mixed support moves one group')
+  assert_equal(20.mm.to_f.round(6), wide_floating.bounds.min.z.to_f.round(6), 'mixed support chooses highest surface')
+ensure
+  erase_tool_action_fixtures(model, [low_support, high_support, wide_floating])
+end
+
 fixture = File.expand_path('../source/su_ai_sync/icon_import.png', __dir__)
 target = nil
 image = nil

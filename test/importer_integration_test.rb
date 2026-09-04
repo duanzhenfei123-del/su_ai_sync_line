@@ -54,3 +54,20 @@ begin
 ensure
   remove_test_groups(model, flat_groups)
 end
+
+stacked_solid_groups = []
+begin
+  before = model.entities.to_a
+  result = SU_AI_Sync::Importer.new(model).import(1.0, true, 4, fixture_dir, 5.0, true, 25.0)
+  stacked_solid_groups = imported_groups_since(model, before)
+  final_group = stacked_solid_groups.find { |group| group.name.start_with?('AI导入') }
+  layer_z = final_group.entities.grep(Sketchup::Group)
+                       .map { |group| group.bounds.min.z.to_f }
+                       .sort
+  gap = (layer_z.last - layer_z.first).round(6)
+
+  assert_equal(true, result[:success], 'stacked extrusion succeeds')
+  assert_equal(25.mm.to_f.round(6), gap, 'stacked extrusion uses non-default gap')
+ensure
+  remove_test_groups(model, stacked_solid_groups)
+end

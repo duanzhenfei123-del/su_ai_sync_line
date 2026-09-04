@@ -1,0 +1,32 @@
+{
+  "version": "test",
+  "scale": 1.0,
+  "paths": [
+    {
+      "id": "text_outer",
+      "name": "text outer",
+      "zIndex": 1,
+      "isTextOutline": true,
+      "textGroupId": "text_1",
+      "verticesMM": [[0, 0], [40, 0], [40, 40], [0, 40]],
+      "curves": [],
+      "isClosed": true,
+      "fillColor": "ff0000",
+      "strokeWidthMM": 0
+    },
+    {
+      "id": "text_inner",
+      "name": "text inner",
+      "zIndex": 1,
+      "isTextOutline": true,
+      "textGroupId": "text_1",
+      "verticesMM": [[15, 15], [25, 15], [25, 25], [15, 25]],
+      "curves": [],
+      "isClosed": true,
+      "fillColor": "ff0000",
+      "strokeWidthMM": 0
+    }
+  ],
+  "groups": [],
+  "images": []
+}

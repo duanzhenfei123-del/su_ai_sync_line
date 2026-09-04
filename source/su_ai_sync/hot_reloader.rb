@@ -21,6 +21,7 @@
           path = File.join(PLUGIN_DIR, f)
           load path if File.exist?(path)
         end
+        SU_AI_Sync.instance_variable_set(:@ui_manager, nil)
         Logger.info("Hot reload done")
         UI.messagebox("Plugin reloaded!")
         true
