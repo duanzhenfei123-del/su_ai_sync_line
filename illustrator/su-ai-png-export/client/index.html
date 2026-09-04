@@ -1,0 +1,81 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SU+AI PNG 导出</title>
+    <link rel="stylesheet" type="text/css" href="css/style.css">
+</head>
+<body>
+    <div id="app">
+        <!-- 头部：标题 + 版本 -->
+        <div id="header-bar" style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:10px;color:#aaa;letter-spacing:1px;">AI → PNG / JSON</span>
+            <span id="version-badge" style="border:1px solid #666;border-radius:999px;padding:2px 6px;font-size:10px;color:#aaa;">v3.6</span>
+        </div>
+        <!-- 作者信息 -->
+        <div class="author-row">
+            <span class="author-name">作者：段土土</span>
+
+        </div>
+
+        <!-- 导出目录 -->
+        <div class="field-row">
+            <label class="field-label" for="exportPath">导出目录:</label>
+            <div class="input-group">
+                <input type="text" id="exportPath" class="text-input" placeholder="选择或输入导出目录...">
+                <button id="browseBtn" class="btn btn-small" title="浏览...">⋯</button>
+            </div>
+        </div>
+
+        <!-- 分辨率 -->
+        <div class="field-row">
+            <label class="field-label" for="resolution">分辨率:</label>
+            <div class="input-group">
+                <input type="number" id="resolution" class="text-input num-input" value="150" min="72" max="600" step="1">
+                <span class="unit-label">PPI</span>
+            </div>
+        </div>
+
+        <!-- 按钮区：轮廓 + 图片 -->
+        <div class="button-row">
+            <button id="exportJsonBtn" class="btn btn-primary" title="将选中路径导出为 JSON 几何数据">📄 导出轮廓</button>
+            <button id="exportBtn" class="btn btn-primary">🖼 导出图片</button>
+        </div>
+
+        <!-- 按钮区：导出为 -->
+        <div class="button-row">
+            <button id="exportAsBtn" class="btn btn-primary" title="打开导出对话框">💾 导出为</button>
+        </div>
+
+        <div class="shortcut-grid">
+            <span class="shortcut-label">轮廓快捷键</span>
+            <input id="jsonShortcut" class="shortcut-input" type="text" readonly value="未设置">
+            <button id="setJsonShortcutBtn" class="shortcut-btn" title="录制快捷键">设置</button>
+            <button id="clearJsonShortcutBtn" class="shortcut-clear" title="清除快捷键">×</button>
+            <span class="shortcut-label">图片快捷键</span>
+            <input id="pngShortcut" class="shortcut-input" type="text" readonly value="未设置">
+            <button id="setPngShortcutBtn" class="shortcut-btn" title="录制快捷键">设置</button>
+            <button id="clearPngShortcutBtn" class="shortcut-clear" title="清除快捷键">×</button>
+        </div>
+
+        <!-- 分隔线 -->
+        <hr class="divider">
+
+        <!-- 状态栏 -->
+        <div id="statusBar" class="status-bar">就绪 - 选择对象后点击导出</div>
+
+        <!-- 详细信息（日志） -->
+        <div id="detailLog" class="detail-log"></div>
+
+        <!-- 底部：重载按钮 -->
+        <div class="footer-row">
+            <button id="reloadBtn" class="footer-btn" title="热加载 ExtendScript + 刷新面板">🔄 重载插件</button>
+        </div>
+    </div>
+
+    <script src="js/CSInterface.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>
