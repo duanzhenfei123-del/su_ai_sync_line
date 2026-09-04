@@ -3,19 +3,64 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
+const memoryFiles = new Map();
+const renameFailures = new Set();
+
+function normalize(filePath) {
+  return String(filePath).replace(/\\/g, '/').replace(/\/$/, '');
+}
+
 function Folder(folderPath) {
-  this.fsName = folderPath;
+  this.fsName = normalize(folderPath);
   this.exists = true;
 }
 Folder.desktop = { fsName: 'C:/Desktop' };
 Folder.userData = { fsName: 'C:/UserData' };
 Folder.selectDialog = function () { return null; };
+Folder.prototype.create = function () { this.exists = true; return true; };
+Folder.prototype.getFiles = function () {
+  const prefix = this.fsName + '/';
+  return Array.from(memoryFiles.keys())
+    .filter(function (filePath) {
+      return filePath.indexOf(prefix) === 0 && filePath.slice(prefix.length).indexOf('/') === -1;
+    })
+    .map(function (filePath) { return new File(filePath); });
+};
 
 function File(filePath) {
-  this.fsName = filePath;
-  this.name = String(filePath).split(/[\\/]/).pop();
-  this.exists = false;
+  this.fsName = normalize(filePath);
+  this.name = this.fsName.split('/').pop();
+  this.exists = memoryFiles.has(this.fsName);
+  this.buffer = '';
 }
+File.prototype.open = function (mode) {
+  this.buffer = mode === 'a' ? (memoryFiles.get(this.fsName) || '') : '';
+  return true;
+};
+File.prototype.write = function (value) { this.buffer += String(value); };
+File.prototype.writeln = function (value) { this.buffer += String(value) + '\n'; };
+File.prototype.read = function () { return memoryFiles.get(this.fsName) || ''; };
+File.prototype.close = function () {
+  memoryFiles.set(this.fsName, this.buffer);
+  this.exists = true;
+};
+File.prototype.remove = function () {
+  const removed = memoryFiles.delete(this.fsName);
+  this.exists = false;
+  return removed;
+};
+File.prototype.rename = function (name) {
+  const slash = this.fsName.lastIndexOf('/');
+  const target = this.fsName.slice(0, slash + 1) + name;
+  if (renameFailures.has(this.fsName + '->' + target)) return false;
+  const content = memoryFiles.has(this.fsName) ? memoryFiles.get(this.fsName) : this.buffer;
+  memoryFiles.delete(this.fsName);
+  memoryFiles.set(target, content);
+  this.fsName = target;
+  this.name = name;
+  this.exists = true;
+  return true;
+};
 
 const context = {
   console,
@@ -107,5 +152,42 @@ const outlined = context.otl(fakeTextWithCompoundOutline(), 1);
 assert.strictEqual(outlined.length, 2);
 assert.strictEqual(outlined[0].textGroupKey, outlined[0].textGroupId);
 assert.strictEqual(outlined[1].textGroupKey, outlined[0].textGroupId);
+
+assert.strictEqual(context.ownedSyncFile('sync_2026-01-01.json'), true);
+assert.strictEqual(context.ownedSyncFile('latest_sync.json.tmp'), true);
+assert.strictEqual(context.ownedSyncFile('customer.json'), false);
+assert.strictEqual(context.ownedSyncFile('photo.png'), false);
+assert.strictEqual(context.esc('a\rb\tc\u0001'), 'a\\rb\\tc\\u0001');
+
+memoryFiles.clear();
+memoryFiles.set('C:/out/sync_old.json', 'old sync');
+memoryFiles.set('C:/out/customer.json', 'customer data');
+memoryFiles.set('C:/out/photo.png', 'png data');
+context.app.activeDocument = {
+  name: 'contract.ai',
+  width: 100,
+  height: 100,
+  selection: [square(5, false)]
+};
+
+const exportResult = JSON.parse(context.exportSelectionAsJSON('C:/out'));
+assert.strictEqual(exportResult.jsonFile, 'latest_sync.json');
+assert.strictEqual(memoryFiles.has('C:/out/latest_sync.json'), true);
+const exported = JSON.parse(memoryFiles.get('C:/out/latest_sync.json'));
+assert.strictEqual(exported.schemaVersion, 2);
+assert.strictEqual(memoryFiles.has('C:/out/sync_old.json'), false);
+assert.strictEqual(memoryFiles.has('C:/out/customer.json'), true);
+assert.strictEqual(memoryFiles.has('C:/out/photo.png'), true);
+assert.deepStrictEqual(Array.from(memoryFiles.keys()).filter(function (name) {
+  return /\.log$/i.test(name);
+}), []);
+
+memoryFiles.clear();
+memoryFiles.set('C:/out/latest_sync.json', 'known good');
+renameFailures.add('C:/out/latest_sync.json.tmp->C:/out/latest_sync.json');
+const failedExport = JSON.parse(context.exportSelectionAsJSON('C:/out'));
+renameFailures.clear();
+assert.strictEqual(failedExport.errors.length, 1);
+assert.strictEqual(memoryFiles.get('C:/out/latest_sync.json'), 'known good');
 
 console.log('PASS illustrator protocol');

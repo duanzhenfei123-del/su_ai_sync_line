@@ -55,7 +55,14 @@ function colorToRGB(c){
     return null;
 }
 function hex(c){var rgb=colorToRGB(c);if(!rgb)return"";var h=(rgb[0]*65536+rgb[1]*256+rgb[2]).toString(16).toUpperCase();while(h.length<6)h="0"+h;return h}
-function esc(s){return String(s).replace(/\\/g,"\\\\").replace(/"/g,'\\"').replace(/\n/g,"\\n")}
+function esc(s){
+    return String(s).replace(/[\\"\u0000-\u001F]/g,function(ch){
+        var map={"\\":"\\\\","\"":"\\\"","\b":"\\b","\f":"\\f","\n":"\\n","\r":"\\r","\t":"\\t"};
+        if(map[ch])return map[ch];
+        return "\\u"+("000"+ch.charCodeAt(0).toString(16)).slice(-4);
+    });
+}
+function ownedSyncFile(name){return /^sync_.*\.(json|tmp)$/i.test(name)||/^latest_sync\.json\.tmp$/i.test(name)}
 var TOL=0.01;
 var TEXT_OUTLINE_COUNTER=0;
 var COMPOUND_COUNTER=0;
@@ -68,9 +75,7 @@ function isLine(cur,nxt){
     return Math.abs(cur.anchor[0]-cur.rightDirection[0])<TOL&&Math.abs(cur.anchor[1]-cur.rightDirection[1])<TOL&&Math.abs(nxt.anchor[0]-nxt.leftDirection[0])<TOL&&Math.abs(nxt.anchor[1]-nxt.leftDirection[1])<TOL;
 }
 function polygonArea(vs){var n=vs.length,a=0;for(var i=0,j=n-1;i<n;j=i++)a+=(vs[j][0]+vs[i][0])*(vs[j][1]-vs[i][1]);return Math.abs(a/2);}
-function log(m){
-    try{var f=new File(desktop.fsName+"/ai-export/ai_sync.log");f.encoding="UTF-8";f.open("a");f.writeln("["+fmt(new Date())+"] "+m);f.close();}catch(e){}
-}
+function log(m){}
 
 var CURVE_TOLERANCE_MM=0.04;
 var MAX_CURVE_DEPTH=10;
@@ -407,16 +412,7 @@ function wg(g,f){
     for(var i=0;i<g.groups.length;i++){wg(g.groups[i],f);if(i<g.groups.length-1)f.write(",");}
     f.write('],"zIndex":'+(g.zIndex||0)+"}")
 }
-
-
-
-function logToFile(logPath, msg) {
-    try { var f = new File(logPath); f.encoding = "UTF-8"; f.open("a"); f.writeln("[" + fmt(new Date()) + "] " + msg); f.close(); } catch(e) {}
-}
-
 function exportSelectionAsJSON(folderPath) {
-    var logPath = folderPath + "/json_export_" + fmtFile(new Date()) + ".log";
-    logToFile(logPath, "=== JSON export start ===");
     try {
         var cleanFolder = new Folder(folderPath);
         if (cleanFolder.exists) {
@@ -425,7 +421,7 @@ function exportSelectionAsJSON(folderPath) {
                 var oldFile = allFiles[fc];
                 if (oldFile instanceof File) {
                     var name = oldFile.name;
-                    if (/^sync_.*\.json$/i.test(name) || /^sync_.*\.tmp$/i.test(name)) {
+                    if (ownedSyncFile(name)) {
                         try { oldFile.remove(); } catch(ce) {}
                     }
                 }
@@ -443,20 +439,18 @@ function exportSelectionAsJSON(folderPath) {
         var s = 1; var paths = []; var groups = []; var images = [];
         for (var i = 0; i < sel.length; i++) {
             var item = sel[i]; var t = item.typename;
-            logToFile(logPath, "  item#" + (i+1) + " type=" + t);
             if (t === "GroupItem") { groups.push(gd(item, s)); }
             else if (t === "TextFrame" || t === "TextArtItem") { var tp = otl(item, s); for (var j = 0; j < tp.length; j++) paths.push(tp[j]); }
             else if (t === "PathItem") { addPathAsGroup(item, paths, groups, s); }
             else if (t === "RasterItem" || t === "PlacedItem") { if (!item.stroked || item.strokeWidth <= 0) paths.push(imgOutline(item)); }
             else if (t === "CompoundPathItem") { aCP(item, paths, s); }
-            else { logToFile(logPath, "skip unsupported: " + t); }
         }
-        var jsonFileName = "sync_" + fmtFile(new Date()) + ".json";
+        var jsonFileName = "latest_sync.json";
         var jsonFilePath = folderPath + "/" + jsonFileName;
         var finalFile = new File(jsonFilePath);
         var f = new File(jsonFilePath + ".tmp");
         f.encoding = "UTF-8"; f.open("w");
-        f.write('{"version":"'+VERSION+'","units":"mm","scale":'+s);
+        f.write('{"version":"'+VERSION+'","schemaVersion":2,"units":"mm","scale":'+s);
         f.write(',"document":{"name":"'+esc(doc.name)+'","widthMM":'+mm(doc.width)+',"heightMM":'+mm(doc.height)+'}');
         f.write(',"paths":[');
         for (var i = 0; i < paths.length; i++) { var p = paths[i];
@@ -479,22 +473,18 @@ function exportSelectionAsJSON(folderPath) {
         for (var i = 0; i < groups.length; i++) { wg(groups[i], f); if (i < groups.length-1) f.write(","); }
         f.write('],"images":[]}');
         f.close();
-        if (finalFile.exists) finalFile.remove();
-        if (!f.rename(finalFile.name)) { throw new Error("Failed to rename JSON temp file"); }
+        var backupFile = new File(jsonFilePath + ".previous");
+        if (backupFile.exists) backupFile.remove();
+        if (finalFile.exists && !finalFile.rename(jsonFileName + ".previous")) { throw new Error("Failed to preserve previous JSON file"); }
+        if (!f.rename(jsonFileName)) {
+            backupFile = new File(jsonFilePath + ".previous");
+            if (backupFile.exists) backupFile.rename(jsonFileName);
+            throw new Error("Failed to rename JSON temp file");
+        }
+        backupFile = new File(jsonFilePath + ".previous");
+        if (backupFile.exists) backupFile.remove();
         result.count = paths.length + groups.length; result.jsonFile = jsonFileName;
-        logToFile(logPath, "=== JSON export done: " + result.count + " items ===");
-    } catch(e) { result.errors.push("fatal: " + e.message); logToFile(logPath, "FATAL: " + e.message); }
-        // Keep only current log, delete old ones
-        try {
-            var logDir = new Folder(folderPath);
-            var logFiles = logDir.getFiles();
-            for (var lc = 0; lc < logFiles.length; lc++) {
-                var lf = logFiles[lc];
-                if (lf instanceof File && /\.log$/i.test(lf.name) && lf.fsName !== logPath) {
-                    try { lf.remove(); } catch(e) {}
-                }
-            }
-        } catch(e) {}
+    } catch(e) { result.errors.push("fatal: " + e.message); }
     return _jsonStringify(result);
 }
 
