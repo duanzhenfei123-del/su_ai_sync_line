@@ -4,6 +4,7 @@ include TestSupport
 
 model = Sketchup.active_model
 fixture_dir = File.expand_path('fixtures/stack', __dir__)
+negative_origin_fixture_dir = File.expand_path('fixtures/negative_origin', __dir__)
 
 def imported_groups_since(model, before)
   (model.entities.to_a - before).grep(Sketchup::Group)
@@ -53,6 +54,22 @@ begin
   assert_equal([0.0], path_z, 'flat import keeps paths at original z')
 ensure
   remove_test_groups(model, flat_groups)
+end
+
+negative_origin_groups = []
+begin
+  before = model.entities.to_a
+  result = SU_AI_Sync::Importer.new(model).import(
+    1.0, true, 4, negative_origin_fixture_dir, 0, false, 10.0
+  )
+  negative_origin_groups = imported_groups_since(model, before)
+  final_group = negative_origin_groups.find { |group| group.name.start_with?('AI导入') }
+
+  assert_equal(true, result[:success], 'negative-coordinate import succeeds')
+  assert_equal(0.0, final_group.bounds.min.x.to_mm.round(6), 'negative-coordinate group aligns min x')
+  assert_equal(0.0, final_group.bounds.min.y.to_mm.round(6), 'negative-coordinate group aligns min y')
+ensure
+  remove_test_groups(model, negative_origin_groups)
 end
 
 stacked_solid_groups = []

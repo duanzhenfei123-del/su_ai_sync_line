@@ -218,8 +218,8 @@
       bounds = group.bounds
       min = bounds.min
       if min.x != 0 || min.y != 0
-        translation = Geom::Transformation.new([-min.x, -min.y, 0])
-        group.entities.transform_entities(translation, group.entities.to_a)
+        translation = Geom::Transformation.translation([-min.x, -min.y, 0])
+        group.transform!(translation)
         Logger.info("Group aligned: bottom-left (#{min.x}, #{min.y}) moved to (0, 0)")
       end
     end

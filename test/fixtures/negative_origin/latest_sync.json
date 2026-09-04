@@ -1,0 +1,18 @@
+{
+  "version": "test",
+  "scale": 1.0,
+  "paths": [
+    {
+      "id": "negative-origin",
+      "name": "negative-origin",
+      "zIndex": 1,
+      "verticesMM": [[-20, -30], [20, -30], [20, 10], [-20, 10]],
+      "curves": [],
+      "isClosed": true,
+      "fillColor": "ff0000",
+      "strokeWidthMM": 0
+    }
+  ],
+  "groups": [],
+  "images": []
+}
