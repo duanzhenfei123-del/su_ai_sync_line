@@ -79,6 +79,8 @@ vm.createContext(context);
 const jsxPath = path.join(__dirname, '..', 'illustrator', 'su-ai-png-export', 'host', 'main.jsx');
 vm.runInContext(fs.readFileSync(jsxPath, 'utf8'), context, { filename: jsxPath });
 
+assert.strictEqual(context.VERSION, '3.7');
+
 function point(x, y) {
   return {
     anchor: [x, y],

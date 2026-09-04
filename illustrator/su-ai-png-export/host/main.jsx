@@ -1,4 +1,4 @@
-var VERSION = "3.6";
+var VERSION = "3.7";
 var desktop = Folder.desktop;
 
 function padZero(n,l){var s=String(n);while(s.length<l)s="0"+s;return s}

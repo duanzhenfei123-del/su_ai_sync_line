@@ -5,8 +5,8 @@ include TestSupport
 manager = SU_AI_Sync::UI_Manager.new
 html = manager.send(:html_content)
 
-assert_equal('3.6.3', SU_AI_Sync::VERSION, 'plugin version')
-assert_equal(true, html.include?('SU+AI 同步 v3.6.3'), 'panel shows release version')
+assert_equal('3.7', SU_AI_Sync::VERSION, 'plugin version')
+assert_equal(true, html.include?('SU+AI 同步 v3.7'), 'panel shows release version')
 assert_equal(true, html.include?('id="zStackBtn"'), 'panel contains layer stack toggle')
 assert_equal(true, html.include?('id="layerGapInput"'), 'panel contains layer gap input')
 assert_equal(true, html.include?('sketchup.drop_to_surface()'), 'panel contains surface drop action')

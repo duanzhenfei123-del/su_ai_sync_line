@@ -258,7 +258,7 @@ module SU_AI_Sync
         .btn_row{display:flex;gap:8px;margin:8px 0}
         .bottom_bar{display:flex;align-items:center;gap:6px;padding:6px 0;border-top:1px solid #e0e0e0;margin-top:6px}
         </style></head><body><div class="container">
-        <h2>SU+AI 同步 v3.6.3</h2>
+        <h2>SU+AI 同步 v3.7</h2>
         <div style="text-align:center;font-size:12px;color:#999;margin:-10px 0 8px 0">作者：段土土</div>
         <button class="btn btn-primary" onclick="doImport()">导入同步数据</button>
         <div class="row"><label>导入比例:</label>

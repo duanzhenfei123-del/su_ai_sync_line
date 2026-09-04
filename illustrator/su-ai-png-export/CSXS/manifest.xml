@@ -1,12 +1,12 @@
 ﻿<?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <ExtensionManifest 
     ExtensionBundleId="com.suai.pngexport"
-    ExtensionBundleVersion="3.6"
+    ExtensionBundleVersion="3.7"
     Version="9.0"
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
 
     <ExtensionList>
-        <Extension Id="com.suai.pngexport.panel" Version="3.6" />
+        <Extension Id="com.suai.pngexport.panel" Version="3.7" />
     </ExtensionList>
 
     <ExecutionEnvironment>

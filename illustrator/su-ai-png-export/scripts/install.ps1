@@ -24,7 +24,7 @@ foreach ($version in 9..20) {
 }
 
 Write-Host ""
-Write-Host "SU+AI PNG 导出 v3.6 安装完成！"
+Write-Host "SU+AI PNG 导出 v3.7 安装完成！"
 Write-Host ""
 Write-Host "目标位置: $destination"
 Write-Host ""
