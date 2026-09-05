@@ -177,6 +177,157 @@ namespace SUAIInstaller
                 Assert(!File.Exists(escapedPath), "Unsafe payload escaped the staging directory");
                 Assert(File.ReadAllText(marker) == "existing", "Unsafe payload changed existing install");
 
+                var beforeRollback = FileHashes(target);
+                using (var payload = Payload())
+                {
+                    try
+                    {
+                        InstallerCore.Install(
+                            payload,
+                            extensions,
+                            dataRoot,
+                            false,
+                            delegate { throw new IOException("forced after old target moved"); });
+                        Assert(false, "Post-move failure was accepted");
+                    }
+                    catch (IOException error)
+                    {
+                        Assert(error.Message == "forced after old target moved", "Unexpected rollback failure");
+                    }
+                }
+                var afterRollback = FileHashes(target);
+                Assert(afterRollback.Count == beforeRollback.Count, "Rollback restored an incomplete target");
+                foreach (var pair in beforeRollback)
+                {
+                    Assert(
+                        afterRollback.ContainsKey(pair.Key) && afterRollback[pair.Key] == pair.Value,
+                        "Rollback file mismatch: " + pair.Key);
+                }
+
+                var lockedOldFile = Path.Combine(target, "locked-old.txt");
+                File.WriteAllText(lockedOldFile, "old");
+                string retainedRollbackDirectory = null;
+                FileStream locked = null;
+                try
+                {
+                    Exception cleanupError = null;
+                    using (var payload = Payload())
+                    {
+                        try
+                        {
+                            InstallerCore.Install(
+                                payload,
+                                extensions,
+                                dataRoot,
+                                false,
+                                delegate
+                                {
+                                    foreach (var directory in Directory.GetDirectories(extensions))
+                                    {
+                                        var movedOldFile = Path.Combine(directory, "locked-old.txt");
+                                        if (File.Exists(movedOldFile))
+                                        {
+                                            locked = new FileStream(
+                                                movedOldFile,
+                                                FileMode.Open,
+                                                FileAccess.Read,
+                                                FileShare.None);
+                                            return;
+                                        }
+                                    }
+                                    throw new IOException("Moved old target was not found");
+                                });
+                        }
+                        catch (Exception error)
+                        {
+                            cleanupError = error;
+                        }
+                    }
+                    Assert(cleanupError == null, "Post-commit rollback cleanup escaped: " + cleanupError);
+                    var installedAfterCleanupFailure = FileHashes(target);
+                    Assert(
+                        installedAfterCleanupFailure.Count == expected.Count,
+                        "Post-commit cleanup failure removed the valid new target");
+                    foreach (var pair in expected)
+                    {
+                        Assert(
+                            installedAfterCleanupFailure.ContainsKey(pair.Key)
+                                && installedAfterCleanupFailure[pair.Key] == pair.Value,
+                            "Post-commit target mismatch: " + pair.Key);
+                    }
+                    var retainedRollbackDirectories = Directory.GetDirectories(
+                        extensions,
+                        ".su-ai-png-export.rollback-*");
+                    Assert(retainedRollbackDirectories.Length == 1, "Locked rollback directory was not retained");
+                    retainedRollbackDirectory = retainedRollbackDirectories[0];
+                }
+                finally
+                {
+                    if (locked != null)
+                    {
+                        locked.Dispose();
+                    }
+                }
+                Directory.Delete(retainedRollbackDirectory, true);
+
+                var fakeHostAlive = true;
+                var hostProbeCalls = 0;
+                var beforeLiveHost = FileHashes(target);
+                File.WriteAllText(Path.Combine(dataRoot, "shortcut-host.status"), "123");
+                IOException liveHostError = null;
+                try
+                {
+                    InstallerCore.Uninstall(
+                        extensions,
+                        dataRoot,
+                        TimeSpan.Zero,
+                        delegate(string statusPath)
+                        {
+                            hostProbeCalls++;
+                            Assert(
+                                statusPath == Path.Combine(dataRoot, "shortcut-host.status"),
+                                "Host probe received the wrong status path");
+                            return fakeHostAlive;
+                        });
+                }
+                catch (IOException error)
+                {
+                    liveHostError = error;
+                }
+                Assert(hostProbeCalls == 1, "Live host was not probed exactly once");
+                Assert(fakeHostAlive, "Live host probe was given a termination capability");
+                Assert(liveHostError != null, "Live shortcut host did not block uninstall");
+                Assert(
+                    liveHostError.Message.Contains("请关闭旧版 AI 插件面板后重试")
+                        && liveHostError.Message.Contains("Illustrator 不会被强制关闭"),
+                    "Live host error was not actionable");
+                Assert(Directory.Exists(target), "Live host timeout mutated the target");
+                var afterLiveHost = FileHashes(target);
+                Assert(afterLiveHost.Count == beforeLiveHost.Count, "Live host timeout changed target files");
+                foreach (var pair in beforeLiveHost)
+                {
+                    Assert(
+                        afterLiveHost.ContainsKey(pair.Key) && afterLiveHost[pair.Key] == pair.Value,
+                        "Live host timeout changed target file: " + pair.Key);
+                }
+
+                var allBackups = Directory.GetFiles(Path.Combine(dataRoot, "backups"), "*.zip");
+                Assert(allBackups.Length == 3, "Expected one persistent backup per attempted upgrade");
+                var backupNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var backupPath in allBackups)
+                {
+                    var backupName = Path.GetFileNameWithoutExtension(backupPath);
+                    Guid backupId;
+                    Assert(
+                        backupName.Length > 32
+                            && Guid.TryParseExact(
+                                backupName.Substring(backupName.Length - 32),
+                                "N",
+                                out backupId),
+                        "Persistent backup name lacks a collision-resistant ID: " + backupName);
+                    Assert(backupNames.Add(backupName), "Persistent backup names collided");
+                }
+
                 foreach (var name in new[] { "panel.heartbeat", "shortcut.command", "shortcuts.cfg" })
                 {
                     File.WriteAllText(Path.Combine(dataRoot, name), "legacy");

@@ -79,6 +79,16 @@ namespace SUAIInstaller
             string dataRoot,
             bool enableDebugMode)
         {
+            Install(payload, extensionsRoot, dataRoot, enableDebugMode, null);
+        }
+
+        internal static void Install(
+            Stream payload,
+            string extensionsRoot,
+            string dataRoot,
+            bool enableDebugMode,
+            Action afterOldTargetMovedForTest)
+        {
             using (var bytes = CopyToMemory(payload))
             {
                 ValidatePayload(bytes);
@@ -89,9 +99,9 @@ namespace SUAIInstaller
                 var staging = Path.Combine(
                     root,
                     "." + ExtensionName + ".staging-" + Guid.NewGuid().ToString("N"));
-                var backup = Path.Combine(
+                var rollbackDirectory = Path.Combine(
                     root,
-                    "." + ExtensionName + ".backup-" + Guid.NewGuid().ToString("N"));
+                    "." + ExtensionName + ".rollback-" + Guid.NewGuid().ToString("N"));
 
                 Directory.CreateDirectory(root);
                 var movedOld = false;
@@ -106,8 +116,12 @@ namespace SUAIInstaller
                     if (Directory.Exists(target))
                     {
                         CreatePersistentBackup(target, dataRoot);
-                        Directory.Move(target, backup);
+                        Directory.Move(target, rollbackDirectory);
                         movedOld = true;
+                        if (afterOldTargetMovedForTest != null)
+                        {
+                            afterOldTargetMovedForTest();
+                        }
                     }
 
                     Directory.Move(staging, target);
@@ -116,11 +130,6 @@ namespace SUAIInstaller
                     if (enableDebugMode)
                     {
                         EnableCepDebugMode();
-                    }
-
-                    if (Directory.Exists(backup))
-                    {
-                        Directory.Delete(backup, true);
                     }
                 }
                 catch (Exception installError)
@@ -141,9 +150,9 @@ namespace SUAIInstaller
 
                     try
                     {
-                        if (movedOld && Directory.Exists(backup) && !Directory.Exists(target))
+                        if (movedOld && Directory.Exists(rollbackDirectory) && !Directory.Exists(target))
                         {
-                            Directory.Move(backup, target);
+                            Directory.Move(rollbackDirectory, target);
                         }
                     }
                     catch (Exception error)
@@ -166,6 +175,8 @@ namespace SUAIInstaller
                 {
                     TryDeleteDirectory(staging);
                 }
+
+                TryDeleteDirectory(rollbackDirectory);
             }
         }
 
@@ -176,7 +187,20 @@ namespace SUAIInstaller
 
         internal static void Uninstall(string extensionsRoot, string dataRoot)
         {
-            PrepareLegacyShortcutRemoval(dataRoot, TimeSpan.FromSeconds(5));
+            Uninstall(
+                extensionsRoot,
+                dataRoot,
+                TimeSpan.FromSeconds(5),
+                LegacyHostIsRunning);
+        }
+
+        internal static void Uninstall(
+            string extensionsRoot,
+            string dataRoot,
+            TimeSpan timeout,
+            Func<string, bool> legacyHostIsRunning)
+        {
+            PrepareLegacyShortcutRemoval(dataRoot, timeout, legacyHostIsRunning);
             var target = TargetPath(extensionsRoot);
             if (Directory.Exists(target))
             {
@@ -260,6 +284,14 @@ namespace SUAIInstaller
 
         private static void PrepareLegacyShortcutRemoval(string dataRoot, TimeSpan timeout)
         {
+            PrepareLegacyShortcutRemoval(dataRoot, timeout, LegacyHostIsRunning);
+        }
+
+        private static void PrepareLegacyShortcutRemoval(
+            string dataRoot,
+            TimeSpan timeout,
+            Func<string, bool> legacyHostIsRunning)
+        {
             Directory.CreateDirectory(dataRoot);
             foreach (var name in LegacyRuntimeFiles)
             {
@@ -268,7 +300,7 @@ namespace SUAIInstaller
 
             var status = Path.Combine(dataRoot, "shortcut-host.status");
             var deadline = DateTime.UtcNow + timeout;
-            while (File.Exists(status) && LegacyHostIsRunning(status))
+            while (File.Exists(status) && legacyHostIsRunning(status))
             {
                 if (DateTime.UtcNow >= deadline)
                 {
@@ -307,7 +339,11 @@ namespace SUAIInstaller
         {
             var backupRoot = Path.Combine(dataRoot, "backups");
             Directory.CreateDirectory(backupRoot);
-            var name = "su-ai-png-export-" + DateTime.Now.ToString("yyyyMMdd-HHmmssfff") + ".zip";
+            var name = "su-ai-png-export-"
+                + DateTime.Now.ToString("yyyyMMdd-HHmmssfff")
+                + "-"
+                + Guid.NewGuid().ToString("N")
+                + ".zip";
             var path = Path.Combine(backupRoot, name);
             ZipFile.CreateFromDirectory(target, path, CompressionLevel.Optimal, false);
             return path;
