@@ -435,7 +435,7 @@ function exportSelectionAsJSON(folderPath) {
             }
         }
     } catch(ce) {}
-    var result = { count: 0, total: 0, errors: [], jsonFile: "" };
+    var result = { count: 0, total: 0, errors: [], diagnostics: [], jsonFile: "" };
     try {
         TEXT_OUTLINE_COUNTER = 0;
         COMPOUND_COUNTER = 0;
@@ -449,11 +449,53 @@ function exportSelectionAsJSON(folderPath) {
         for (var i = 0; i < sel.length; i++) {
             var pathStart = paths.length; var groupStart = groups.length;
             var item = sel[i]; var t = item.typename;
+            var diagnostic = { index: i + 1, type: t || "Unknown", name: item.name || "", status: "exported" };
             if (t === "GroupItem") { groups.push(gd(item, s)); }
             else if (t === "TextFrame" || t === "TextArtItem") { var tp = otl(item, s); for (var j = 0; j < tp.length; j++) paths.push(tp[j]); }
             else if (t === "PathItem") { addPathAsGroup(item, paths, groups, s); }
             else if (t === "RasterItem" || t === "PlacedItem") { if (!item.stroked || item.strokeWidth <= 0) paths.push(imgOutline(item)); }
-            else if (t === "CompoundPathItem") { aCP(item, paths, s); }
+            else if (t === "CompoundPathItem") {
+                diagnostic.pathCount = item.pathItems ? item.pathItems.length : 0;
+                if (diagnostic.pathCount > 0) {
+                    aCP(item, paths, s);
+                } else {
+                    diagnostic.status = "skipped";
+                    diagnostic.reason = "复合路径不包含可导出的子路径";
+                    result.errors.push("第 " + diagnostic.index + " 项（" + diagnostic.type + "）已跳过：" + diagnostic.reason);
+                }
+            } else if (t === "PluginItem") {
+                diagnostic.isTracing = item.isTracing === true;
+                if (diagnostic.isTracing) {
+                    var temporaryPlugin = null, expandedPlugin = null;
+                    try {
+                        temporaryPlugin = item.duplicate();
+                        app.redraw();
+                        expandedPlugin = temporaryPlugin.tracing.expandTracing(false);
+                        groups.push(gd(expandedPlugin, s));
+                        diagnostic.temporaryExpansion = true;
+                    } catch (pluginError) {
+                        diagnostic.status = "skipped";
+                        diagnostic.reason = "图像描摹临时展开失败: " + pluginError.message;
+                        result.errors.push("第 " + diagnostic.index + " 项（PluginItem）已跳过：" + diagnostic.reason);
+                    } finally {
+                        var cleanupPlugin = expandedPlugin || temporaryPlugin;
+                        if (cleanupPlugin) try { cleanupPlugin.remove(); } catch (cleanupError) {
+                            diagnostic.status = "skipped";
+                            diagnostic.reason = "临时展开对象清理失败: " + cleanupError.message;
+                            result.errors.push("第 " + diagnostic.index + " 项（PluginItem）已跳过：" + diagnostic.reason);
+                        }
+                    }
+                } else {
+                    diagnostic.status = "skipped";
+                    diagnostic.reason = "非图像描摹插件对象，无法无损读取路径";
+                    result.errors.push("第 " + diagnostic.index + " 项（PluginItem）已跳过：" + diagnostic.reason);
+                }
+            } else {
+                diagnostic.status = "skipped";
+                diagnostic.reason = "不支持的对象类型";
+                result.errors.push("第 " + diagnostic.index + " 项（" + diagnostic.type + "）已跳过：" + diagnostic.reason);
+            }
+            result.diagnostics.push(diagnostic);
             for (var pi = pathStart; pi < paths.length; pi++) paths[pi].zIndex = selectionZ[i];
             for (var gi = groupStart; gi < groups.length; gi++) groups[gi].zIndex = selectionZ[i];
         }

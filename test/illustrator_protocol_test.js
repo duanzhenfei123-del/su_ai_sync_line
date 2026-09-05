@@ -203,6 +203,169 @@ assert.deepStrictEqual(Array.from(memoryFiles.keys()).filter(function (name) {
   return /\.log$/i.test(name);
 }), []);
 
+memoryFiles.clear();
+context.app.activeDocument = {
+  name: 'unsupported.ai',
+  width: 100,
+  height: 100,
+  selection: [{ typename: 'LivePaintGroup', name: 'live paint' }]
+};
+const unsupportedResult = JSON.parse(context.exportSelectionAsJSON('C:/out'));
+assert.deepStrictEqual(unsupportedResult.diagnostics || [], [{
+  index: 1,
+  type: 'LivePaintGroup',
+  name: 'live paint',
+  status: 'skipped',
+  reason: '不支持的对象类型'
+}]);
+assert.deepStrictEqual(unsupportedResult.errors, ['第 1 项（LivePaintGroup）已跳过：不支持的对象类型']);
+
+memoryFiles.clear();
+context.app.activeDocument = {
+  name: 'compound.ai',
+  width: 100,
+  height: 100,
+  selection: [{
+    typename: 'CompoundPathItem',
+    name: 'ring',
+    pathItems: [square(1, false), square(1, false)]
+  }]
+};
+const compoundResult = JSON.parse(context.exportSelectionAsJSON('C:/out'));
+assert.deepStrictEqual(compoundResult.diagnostics || [], [{
+  index: 1,
+  type: 'CompoundPathItem',
+  name: 'ring',
+  status: 'exported',
+  pathCount: 2
+}]);
+assert.deepStrictEqual(compoundResult.errors, []);
+
+memoryFiles.clear();
+context.app.activeDocument = {
+  name: 'empty-compound.ai',
+  width: 100,
+  height: 100,
+  selection: [{ typename: 'CompoundPathItem', name: 'empty ring', pathItems: [] }]
+};
+const emptyCompoundResult = JSON.parse(context.exportSelectionAsJSON('C:/out'));
+assert.deepStrictEqual(emptyCompoundResult.diagnostics || [], [{
+  index: 1,
+  type: 'CompoundPathItem',
+  name: 'empty ring',
+  status: 'skipped',
+  pathCount: 0,
+  reason: '复合路径不包含可导出的子路径'
+}]);
+assert.deepStrictEqual(emptyCompoundResult.errors, ['第 1 项（CompoundPathItem）已跳过：复合路径不包含可导出的子路径']);
+
+memoryFiles.clear();
+let nonTracingDuplicated = false;
+context.app.activeDocument = {
+  name: 'non-tracing-plugin.ai',
+  width: 100,
+  height: 100,
+  selection: [{
+    typename: 'PluginItem',
+    name: 'third-party effect',
+    isTracing: false,
+    duplicate: function () { nonTracingDuplicated = true; }
+  }]
+};
+const nonTracingPluginResult = JSON.parse(context.exportSelectionAsJSON('C:/out'));
+assert.strictEqual(nonTracingPluginResult.count, 0);
+assert.strictEqual(nonTracingDuplicated, false);
+assert.deepStrictEqual(nonTracingPluginResult.diagnostics || [], [{
+  index: 1,
+  type: 'PluginItem',
+  name: 'third-party effect',
+  status: 'skipped',
+  isTracing: false,
+  reason: '非图像描摹插件对象，无法无损读取路径'
+}]);
+assert.deepStrictEqual(nonTracingPluginResult.errors, ['第 1 项（PluginItem）已跳过：非图像描摹插件对象，无法无损读取路径']);
+
+memoryFiles.clear();
+let failedTraceSourceRemoved = false;
+let failedTraceTemporaryRemoved = false;
+const failedTraceSource = {
+  typename: 'PluginItem',
+  name: 'broken trace',
+  isTracing: true,
+  duplicate: function () {
+    return {
+      tracing: { expandTracing: function () { throw new Error('expand failed'); } },
+      remove: function () { failedTraceTemporaryRemoved = true; }
+    };
+  },
+  remove: function () { failedTraceSourceRemoved = true; }
+};
+context.app.redraw = function () {};
+context.app.activeDocument = {
+  name: 'broken-trace.ai',
+  width: 100,
+  height: 100,
+  selection: [failedTraceSource]
+};
+const failedTraceResult = JSON.parse(context.exportSelectionAsJSON('C:/out'));
+assert.strictEqual(failedTraceResult.count, 0);
+assert.strictEqual(failedTraceSourceRemoved, false);
+assert.strictEqual(failedTraceTemporaryRemoved, true);
+assert.deepStrictEqual(failedTraceResult.diagnostics || [], [{
+  index: 1,
+  type: 'PluginItem',
+  name: 'broken trace',
+  status: 'skipped',
+  isTracing: true,
+  reason: '图像描摹临时展开失败: expand failed'
+}]);
+assert.deepStrictEqual(failedTraceResult.errors, ['第 1 项（PluginItem）已跳过：图像描摹临时展开失败: expand failed']);
+
+memoryFiles.clear();
+let sourcePluginRemoved = false;
+let expandedPluginRemoved = false;
+let redrawCalls = 0;
+const expandedPluginGroup = fakeGroupWithPath(6);
+expandedPluginGroup.remove = function () { expandedPluginRemoved = true; };
+const temporaryPlugin = {
+  tracing: {
+    expandTracing: function (viewed) {
+      assert.strictEqual(viewed, false);
+      return expandedPluginGroup;
+    }
+  },
+  remove: function () { throw new Error('expanded trace should replace the temporary plugin'); }
+};
+const sourcePlugin = {
+  typename: 'PluginItem',
+  name: 'traced artwork',
+  isTracing: true,
+  duplicate: function () { return temporaryPlugin; },
+  remove: function () { sourcePluginRemoved = true; }
+};
+context.app.redraw = function () { redrawCalls++; };
+context.app.activeDocument = {
+  name: 'traced-plugin.ai',
+  width: 100,
+  height: 100,
+  selection: [sourcePlugin]
+};
+const tracedPluginResult = JSON.parse(context.exportSelectionAsJSON('C:/out'));
+assert.strictEqual(tracedPluginResult.count, 1);
+assert.deepStrictEqual(tracedPluginResult.errors, []);
+assert.deepStrictEqual(tracedPluginResult.diagnostics || [], [{
+  index: 1,
+  type: 'PluginItem',
+  name: 'traced artwork',
+  status: 'exported',
+  isTracing: true,
+  temporaryExpansion: true
+}]);
+assert.strictEqual(redrawCalls, 1);
+assert.strictEqual(sourcePluginRemoved, false);
+assert.strictEqual(expandedPluginRemoved, true);
+assert.strictEqual(JSON.parse(memoryFiles.get('C:/out/latest_sync.json')).groups.length, 1);
+
 let movingZ = 2;
 const movingPath = square(2, false);
 Object.defineProperty(movingPath, 'zOrderPosition', { get: function () { return movingZ; } });

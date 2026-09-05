@@ -178,6 +178,15 @@
         csInterface.evalScript(script, function (result) {
             try {
                 var data = JSON.parse(result);
+                if (data.diagnostics && data.diagnostics.length > 0) {
+                    for (var d = 0; d < data.diagnostics.length; d++) {
+                        var diagnostic = data.diagnostics[d];
+                        var detail = "🔎 第 " + diagnostic.index + " 项：" + diagnostic.type;
+                        if (typeof diagnostic.pathCount === "number") detail += "（" + diagnostic.pathCount + " 个子路径）";
+                        detail += diagnostic.status === "skipped" ? "，已跳过：" + diagnostic.reason : diagnostic.temporaryExpansion ? "，临时展开后已导出" : "，已导出";
+                        addLog(detail, diagnostic.status === "skipped" ? "err" : "");
+                    }
+                }
                 if (data.errors && data.errors.length > 0) {
                     for (var i = 0; i < data.errors.length; i++) {
                         addLog("❌ " + data.errors[i], "err");
