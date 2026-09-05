@@ -18,6 +18,14 @@ if (-not $destination.StartsWith($destinationPrefix, [StringComparison]::Ordinal
     throw "Unsafe extension destination: $destination"
 }
 
+$sourcePathPrefix = $source.TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+$destinationPathPrefix = $destination.TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+if ($source.Equals($destination, [StringComparison]::OrdinalIgnoreCase) -or
+    $source.StartsWith($destinationPathPrefix, [StringComparison]::OrdinalIgnoreCase) -or
+    $destination.StartsWith($sourcePathPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "安装来源目录不能与目标目录相同或重叠。请先将安装包解压到其他文件夹后重试。来源: $source；目标: $destination"
+}
+
 Write-Host '正在安装 SU+AI PNG 导出...'
 Write-Host "来源: $source"
 Write-Host "目标: $destination"
