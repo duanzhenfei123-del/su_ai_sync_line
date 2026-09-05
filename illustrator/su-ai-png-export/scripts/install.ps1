@@ -84,5 +84,5 @@ if (-not $SkipDebugMode) {
 }
 
 Write-Host ''
-Write-Host 'SU+AI PNG 导出 v3.7.1 安装完成！'
+Write-Host 'SU+AI PNG 导出 v3.7.2 安装完成！'
 Write-Host "目标位置: $destination"
