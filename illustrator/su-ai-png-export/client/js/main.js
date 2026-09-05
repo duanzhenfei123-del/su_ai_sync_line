@@ -17,21 +17,6 @@
     var reloadBtn = document.getElementById("reloadBtn");
     var statusBar = document.getElementById("statusBar");
     var detailLog = document.getElementById("detailLog");
-    var jsonShortcutInput = document.getElementById("jsonShortcut");
-    var pngShortcutInput = document.getElementById("pngShortcut");
-    var setJsonShortcutBtn = document.getElementById("setJsonShortcutBtn");
-    var setPngShortcutBtn = document.getElementById("setPngShortcutBtn");
-    var clearJsonShortcutBtn = document.getElementById("clearJsonShortcutBtn");
-    var clearPngShortcutBtn = document.getElementById("clearPngShortcutBtn");
-    var shortcuts = {
-        json: localStorage.getItem("suai.shortcut.json") || "",
-        png: localStorage.getItem("suai.shortcut.png") || ""
-    };
-    var recordingShortcut = "";
-    var shortcutHostPath = csInterface.getSystemPath(SystemPath.EXTENSION) + "/bin/SUAIShortcutHost.exe";
-    var shortcutCommandPending = false;
-    var shortcutHeartbeatCount = 0;
-
     // ===== 工具函数 =====
 
     function setStatus(text, type) {
@@ -51,85 +36,6 @@
 
     function clearLog() {
         detailLog.innerHTML = "";
-    }
-
-    function keyFromEvent(event) {
-        var key = event.key || "";
-        var keyCode = event.keyCode || event.which || 0;
-        if (!key || key === "Unidentified") {
-            if (keyCode >= 112 && keyCode <= 123) return "F" + (keyCode - 111);
-            if (keyCode >= 65 && keyCode <= 90) return String.fromCharCode(keyCode);
-            if (keyCode >= 48 && keyCode <= 57) return String.fromCharCode(keyCode);
-            var specialKeys = {13:"Enter",27:"Escape",32:"Space",37:"ArrowLeft",38:"ArrowUp",39:"ArrowRight",40:"ArrowDown",46:"Delete"};
-            return specialKeys[keyCode] || "";
-        }
-        if (key === "Esc") key = "Escape";
-        if (key === " ") key = "Space";
-        if (/^F([1-9]|1[0-2])$/i.test(key)) return key.toUpperCase();
-        return key.length === 1 ? key.toUpperCase() : key;
-    }
-
-    function shortcutFromEvent(event) {
-        var key = keyFromEvent(event);
-        if (key === "Control" || key === "Shift" || key === "Alt" || key === "Meta") return "";
-        var functionKey = /^F([1-9]|1[0-2])$/.test(key);
-        if (!key || (!functionKey && !event.ctrlKey && !event.altKey && !event.shiftKey)) return "";
-        var parts = [];
-        if (event.ctrlKey) parts.push("Ctrl");
-        if (event.altKey) parts.push("Alt");
-        if (event.shiftKey) parts.push("Shift");
-        parts.push(key);
-        return parts.join("+");
-    }
-
-    function showShortcut(shortcut) {
-        return shortcut ? shortcut.replace(/\+/g, " + ") : "未设置";
-    }
-
-    function renderShortcuts() {
-        jsonShortcutInput.value = recordingShortcut === "json" ? "按组合键或 F1-F12" : showShortcut(shortcuts.json);
-        pngShortcutInput.value = recordingShortcut === "png" ? "按组合键或 F1-F12" : showShortcut(shortcuts.png);
-        jsonShortcutInput.className = "shortcut-input" + (recordingShortcut === "json" ? " recording" : "");
-        pngShortcutInput.className = "shortcut-input" + (recordingShortcut === "png" ? " recording" : "");
-    }
-
-    function saveShortcut(action, shortcut) {
-        var other = action === "json" ? "png" : "json";
-        if (shortcut && shortcuts[other] === shortcut) {
-            shortcuts[other] = "";
-            localStorage.removeItem("suai.shortcut." + other);
-        }
-        shortcuts[action] = shortcut;
-        if (shortcut) localStorage.setItem("suai.shortcut." + action, shortcut);
-        else localStorage.removeItem("suai.shortcut." + action);
-        recordingShortcut = "";
-        renderShortcuts();
-        syncGlobalShortcuts();
-        setStatus(shortcut ? "快捷键已保存" : "快捷键已清除", "info");
-    }
-
-    function syncGlobalShortcuts() {
-        var script = "configureGlobalShortcuts(\"" + escape(shortcuts.json) + "\",\"" + escape(shortcuts.png) + "\",\"" + escape(shortcutHostPath) + "\")";
-        csInterface.evalScript(script);
-    }
-
-    function maintainGlobalShortcutHost() {
-        shortcutHeartbeatCount++;
-        csInterface.evalScript("touchGlobalShortcutHeartbeat()");
-        if (shortcutHeartbeatCount % 5 === 0) {
-            csInterface.evalScript("ensureGlobalShortcutHost(\"" + escape(shortcutHostPath) + "\")");
-        }
-    }
-
-    function pollGlobalShortcutCommand() {
-        if (shortcutCommandPending) return;
-        shortcutCommandPending = true;
-        csInterface.evalScript("consumeGlobalShortcutCommand()", function (result) {
-            shortcutCommandPending = false;
-            var command = String(result || "").replace(/^"|"$/g, "");
-            if (command === "json" && !exportJsonBtn.disabled) doJsonExport();
-            else if (command === "png" && !exportBtn.disabled) doExport();
-        });
     }
 
     // ===== 从 AI 端获取导出目录配置 =====
@@ -331,46 +237,6 @@
 
     exportJsonBtn.addEventListener("click", doJsonExport);
 
-    setJsonShortcutBtn.addEventListener("click", function () {
-        recordingShortcut = "json";
-        renderShortcuts();
-        jsonShortcutInput.focus();
-        setStatus("请按组合键或 F1-F12", "info");
-    });
-
-    setPngShortcutBtn.addEventListener("click", function () {
-        recordingShortcut = "png";
-        renderShortcuts();
-        pngShortcutInput.focus();
-        setStatus("请按组合键或 F1-F12", "info");
-    });
-
-    clearJsonShortcutBtn.addEventListener("click", function () { saveShortcut("json", ""); });
-    clearPngShortcutBtn.addEventListener("click", function () { saveShortcut("png", ""); });
-
-    window.addEventListener("keydown", function (event) {
-        if (event.repeat) return;
-        var shortcut = shortcutFromEvent(event);
-        if (recordingShortcut) {
-            event.preventDefault();
-            event.stopPropagation();
-            if (event.stopImmediatePropagation) event.stopImmediatePropagation();
-            if (shortcut) saveShortcut(recordingShortcut, shortcut);
-            return;
-        }
-        if (!shortcut) return;
-        if (shortcut === shortcuts.json && !exportJsonBtn.disabled) {
-            event.preventDefault();
-            event.stopPropagation();
-            doJsonExport();
-        } else if (shortcut === shortcuts.png && !exportBtn.disabled) {
-            event.preventDefault();
-            event.stopPropagation();
-            doExport();
-        }
-    }, true);
-
-
     exportAsBtn.addEventListener("click", function() {
         setStatus("正在打开导出对话框...", "info");
         csInterface.evalScript("openExportDialog()", function(result) {
@@ -416,18 +282,11 @@
 
     // 加载已保存的导出目录配置
     loadExportConfig();
-    renderShortcuts();
-    syncGlobalShortcuts();
-    setInterval(maintainGlobalShortcutHost, 1000);
-    setInterval(pollGlobalShortcutCommand, 200);
     setStatus("就绪 - 选择对象后点击导出", "");
 
-    // 面板关闭时清理
     window.addEventListener("beforeunload", function () {
-        // 保存当前配置
         var path = exportPathInput.value.trim();
         if (path) saveExportConfig(path);
-        csInterface.evalScript("disableGlobalShortcuts()");
     });
 
 })();

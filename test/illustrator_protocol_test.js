@@ -79,7 +79,14 @@ vm.createContext(context);
 const jsxPath = path.join(__dirname, '..', 'illustrator', 'su-ai-png-export', 'host', 'main.jsx');
 vm.runInContext(fs.readFileSync(jsxPath, 'utf8'), context, { filename: jsxPath });
 
-assert.strictEqual(context.VERSION, '3.7');
+assert.strictEqual(context.VERSION, '3.7.1');
+[
+  'shortcutDataFolder', 'configureGlobalShortcuts',
+  'ensureGlobalShortcutHost', 'touchGlobalShortcutHeartbeat',
+  'consumeGlobalShortcutCommand', 'disableGlobalShortcuts'
+].forEach(function (name) {
+  assert.strictEqual(typeof context[name], 'undefined', name + ' should be removed');
+});
 
 function point(x, y) {
   return {

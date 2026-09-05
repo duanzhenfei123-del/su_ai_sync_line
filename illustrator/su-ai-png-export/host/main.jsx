@@ -1,4 +1,4 @@
-var VERSION = "3.7";
+var VERSION = "3.7.1";
 var desktop = Folder.desktop;
 
 function padZero(n,l){var s=String(n);while(s.length<l)s="0"+s;return s}
@@ -532,69 +532,6 @@ function writeExportConfig(ep) {
     f.write('{"exportFolder":"' + String(ep).replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"}'); f.close();
 }
 
-function shortcutDataFolder() {
-    var folder = new Folder(Folder.userData.fsName + "/SU_AI_PNG_Export");
-    if (!folder.exists) folder.create();
-    return folder;
-}
-
-function writeShortcutFile(name, content) {
-    var file = new File(shortcutDataFolder().fsName + "/" + name);
-    file.encoding = "UTF-8";
-    if (!file.open("w")) return false;
-    file.write(content);
-    file.close();
-    return true;
-}
-
-function ensureGlobalShortcutHost(helperPath) {
-    try {
-        var statusFile = new File(shortcutDataFolder().fsName + "/shortcut-host.status");
-        if (statusFile.exists && statusFile.modified && (new Date().getTime() - statusFile.modified.getTime()) < 3000) return "running";
-        var helper = new File(helperPath);
-        if (!helper.exists) return "missing";
-        return helper.execute() ? "started" : "failed";
-    } catch(e) { return "failed: " + e.message; }
-}
-
-function configureGlobalShortcuts(jsonShortcut, pngShortcut, helperPath) {
-    var cleanJson = String(jsonShortcut || "").replace(/[\r\n]/g, "");
-    var cleanPng = String(pngShortcut || "").replace(/[\r\n]/g, "");
-    writeShortcutFile("shortcuts.cfg", "json=" + cleanJson + "\npng=" + cleanPng + "\n");
-    writeShortcutFile("panel.heartbeat", String(new Date().getTime()));
-    var commandFile = new File(shortcutDataFolder().fsName + "/shortcut.command");
-    if (commandFile.exists) commandFile.remove();
-    return ensureGlobalShortcutHost(helperPath);
-}
-
-function touchGlobalShortcutHeartbeat() {
-    return writeShortcutFile("panel.heartbeat", String(new Date().getTime())) ? "ok" : "failed";
-}
-
-function consumeGlobalShortcutCommand() {
-    try {
-        var commandFile = new File(shortcutDataFolder().fsName + "/shortcut.command");
-        if (!commandFile.exists) return "";
-        commandFile.encoding = "UTF-8";
-        commandFile.open("r");
-        var command = commandFile.read().replace(/^\s+|\s+$/g, "");
-        commandFile.close();
-        commandFile.remove();
-        return command;
-    } catch(e) { return ""; }
-}
-
-function disableGlobalShortcuts() {
-    try {
-        var folder = shortcutDataFolder();
-        var heartbeat = new File(folder.fsName + "/panel.heartbeat");
-        var command = new File(folder.fsName + "/shortcut.command");
-        if (heartbeat.exists) heartbeat.remove();
-        if (command.exists) command.remove();
-    } catch(e) {}
-    return "ok";
-}
-
 function exportSelectionAsPNG(folderPath, resolution) {
     var result = { count: 0, total: 0, errors: [] };
     try {
@@ -686,11 +623,6 @@ if (typeof $.global !== "undefined") {
     $.global.pickExportFolder = pickExportFolder;
     $.global.readExportConfig = readExportConfig;
     $.global.writeExportConfig = writeExportConfig;
-    $.global.configureGlobalShortcuts = configureGlobalShortcuts;
-    $.global.ensureGlobalShortcutHost = ensureGlobalShortcutHost;
-    $.global.touchGlobalShortcutHeartbeat = touchGlobalShortcutHeartbeat;
-    $.global.consumeGlobalShortcutCommand = consumeGlobalShortcutCommand;
-    $.global.disableGlobalShortcuts = disableGlobalShortcuts;
     $.global.exportSelectionAsPNG = exportSelectionAsPNG;
     $.global.openArtboardTool = openArtboardTool;
     $.global.openExportDialog = openExportDialog;
