@@ -1,32 +1,80 @@
-﻿$ErrorActionPreference = "Stop"
+﻿param(
+    [string]$SourcePath=(Split-Path -Parent $PSScriptRoot),
+    [string]$ExtensionsRoot=(Join-Path $env:APPDATA 'Adobe\CEP\extensions'),
+    [string]$DataRoot=(Join-Path $env:APPDATA 'SU_AI_PNG_Export'),
+    [switch]$SkipDebugMode
+)
 
-$extensionName = "su-ai-png-export"
-$source = Split-Path -Parent $PSScriptRoot
-$extensionsRoot = Join-Path $env:APPDATA "Adobe\CEP\extensions"
-$destination = Join-Path $extensionsRoot $extensionName
+$ErrorActionPreference = 'Stop'
+$extensionName = 'su-ai-png-export'
+$source = [IO.Path]::GetFullPath($SourcePath)
+$extensionsRootPath = [IO.Path]::GetFullPath($ExtensionsRoot)
+$dataRootPath = [IO.Path]::GetFullPath($DataRoot)
+$destination = [IO.Path]::GetFullPath((Join-Path $extensionsRootPath $extensionName))
+$destinationPrefix = $extensionsRootPath.TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
 
-Write-Host "正在安装 SU+AI PNG 导出..."
-Write-Host "来源: $source"
-Write-Host "目标: $destination"
-Write-Host ""
-
-# 创建目录并复制文件
-New-Item -ItemType Directory -Path $extensionsRoot -Force | Out-Null
-New-Item -ItemType Directory -Path $destination -Force | Out-Null
-Copy-Item -Path (Join-Path $source "*") -Destination $destination -Recurse -Force
-
-# 自动开启 CEP 调试模式（覆盖多个 CSXS 版本）
-Write-Host "正在开启 PlayerDebugMode..."
-foreach ($version in 9..20) {
-    $registryPath = "HKCU:\Software\Adobe\CSXS.$version"
-    New-Item -Path $registryPath -Force | Out-Null
-    Set-ItemProperty -Path $registryPath -Name "PlayerDebugMode" -Value "1" -Type String
+if (-not $destination.StartsWith($destinationPrefix, [StringComparison]::OrdinalIgnoreCase) -or
+    -not $destination.EndsWith(([IO.Path]::DirectorySeparatorChar + $extensionName), [StringComparison]::OrdinalIgnoreCase)) {
+    throw "Unsafe extension destination: $destination"
 }
 
-Write-Host ""
-Write-Host "SU+AI PNG 导出 v3.7 安装完成！"
-Write-Host ""
+Write-Host '正在安装 SU+AI PNG 导出...'
+Write-Host "来源: $source"
+Write-Host "目标: $destination"
+Write-Host ''
+
+New-Item -ItemType Directory -Path $extensionsRootPath -Force | Out-Null
+New-Item -ItemType Directory -Path $dataRootPath -Force | Out-Null
+
+'panel.heartbeat','shortcut.command','shortcuts.cfg' | ForEach-Object {
+    $legacyPath = Join-Path $dataRootPath $_
+    if (Test-Path -LiteralPath $legacyPath) {
+        Remove-Item -LiteralPath $legacyPath -Force
+    }
+}
+
+$statusPath = Join-Path $dataRootPath 'shortcut-host.status'
+$deadline = [DateTime]::UtcNow.AddSeconds(5)
+while (Test-Path -LiteralPath $statusPath) {
+    $processId = 0
+    $statusPid = ([string](Get-Content -Raw -LiteralPath $statusPath)).Trim()
+    if (-not [Int32]::TryParse($statusPid, [ref]$processId)) {
+        break
+    }
+
+    $legacyHost = Get-Process -Id $processId -ErrorAction SilentlyContinue
+    if ($null -eq $legacyHost -or $legacyHost.ProcessName -ne 'SUAIShortcutHost') {
+        break
+    }
+    if ([DateTime]::UtcNow -ge $deadline) {
+        throw '旧版快捷键程序仍在运行。请关闭旧版 AI 插件面板后重试；Illustrator 不会被强制关闭。'
+    }
+    Start-Sleep -Milliseconds 100
+}
+if (Test-Path -LiteralPath $statusPath) {
+    Remove-Item -LiteralPath $statusPath -Force
+}
+
+if (Test-Path -LiteralPath $destination) {
+    $backupRoot = Join-Path $dataRootPath 'backups'
+    New-Item -ItemType Directory -Path $backupRoot -Force | Out-Null
+    $backupPath = Join-Path $backupRoot ('su-ai-png-export-' + (Get-Date -Format 'yyyyMMdd-HHmmssfff') + '-' + [Guid]::NewGuid().ToString('N') + '.zip')
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    [IO.Compression.ZipFile]::CreateFromDirectory($destination, $backupPath, [IO.Compression.CompressionLevel]::Optimal, $false)
+    Remove-Item -LiteralPath $destination -Recurse -Force
+}
+
+Copy-Item -LiteralPath $source -Destination $destination -Recurse -Force
+
+if (-not $SkipDebugMode) {
+    Write-Host '正在开启 PlayerDebugMode...'
+    foreach ($version in 9..20) {
+        $registryPath = "HKCU:\Software\Adobe\CSXS.$version"
+        New-Item -Path $registryPath -Force | Out-Null
+        Set-ItemProperty -Path $registryPath -Name 'PlayerDebugMode' -Value '1' -Type String
+    }
+}
+
+Write-Host ''
+Write-Host 'SU+AI PNG 导出 v3.7.1 安装完成！'
 Write-Host "目标位置: $destination"
-Write-Host ""
-Write-Host "请重启 Illustrator，然后打开："
-Write-Host "  窗口 > 扩展（旧版） > SU+AI PNG 导出"
