@@ -260,111 +260,124 @@ assert.deepStrictEqual(emptyCompoundResult.diagnostics || [], [{
 assert.deepStrictEqual(emptyCompoundResult.errors, ['第 1 项（CompoundPathItem）已跳过：复合路径不包含可导出的子路径']);
 
 memoryFiles.clear();
-let nonTracingDuplicated = false;
-context.app.activeDocument = {
-  name: 'non-tracing-plugin.ai',
-  width: 100,
-  height: 100,
-  selection: [{
-    typename: 'PluginItem',
-    name: 'third-party effect',
-    isTracing: false,
-    duplicate: function () { nonTracingDuplicated = true; }
-  }]
-};
-const nonTracingPluginResult = JSON.parse(context.exportSelectionAsJSON('C:/out'));
-assert.strictEqual(nonTracingPluginResult.count, 0);
-assert.strictEqual(nonTracingDuplicated, false);
-assert.deepStrictEqual(nonTracingPluginResult.diagnostics || [], [{
-  index: 1,
-  type: 'PluginItem',
-  name: 'third-party effect',
-  status: 'skipped',
-  isTracing: false,
-  reason: '非图像描摹插件对象，无法无损读取路径'
-}]);
-assert.deepStrictEqual(nonTracingPluginResult.errors, ['第 1 项（PluginItem）已跳过：非图像描摹插件对象，无法无损读取路径']);
-
-memoryFiles.clear();
-let failedTraceSourceRemoved = false;
-let failedTraceTemporaryRemoved = false;
-const failedTraceSource = {
-  typename: 'PluginItem',
-  name: 'broken trace',
-  isTracing: true,
-  duplicate: function () {
-    return {
-      tracing: { expandTracing: function () { throw new Error('expand failed'); } },
-      remove: function () { failedTraceTemporaryRemoved = true; }
-    };
-  },
-  remove: function () { failedTraceSourceRemoved = true; }
-};
-context.app.redraw = function () {};
-context.app.activeDocument = {
-  name: 'broken-trace.ai',
-  width: 100,
-  height: 100,
-  selection: [failedTraceSource]
-};
-const failedTraceResult = JSON.parse(context.exportSelectionAsJSON('C:/out'));
-assert.strictEqual(failedTraceResult.count, 0);
-assert.strictEqual(failedTraceSourceRemoved, false);
-assert.strictEqual(failedTraceTemporaryRemoved, true);
-assert.deepStrictEqual(failedTraceResult.diagnostics || [], [{
-  index: 1,
-  type: 'PluginItem',
-  name: 'broken trace',
-  status: 'skipped',
-  isTracing: true,
-  reason: '图像描摹临时展开失败: expand failed'
-}]);
-assert.deepStrictEqual(failedTraceResult.errors, ['第 1 项（PluginItem）已跳过：图像描摹临时展开失败: expand failed']);
-
-memoryFiles.clear();
 let sourcePluginRemoved = false;
 let expandedPluginRemoved = false;
-let redrawCalls = 0;
+let expandCommandCalls = 0;
 const expandedPluginGroup = fakeGroupWithPath(6);
 expandedPluginGroup.remove = function () { expandedPluginRemoved = true; };
-const temporaryPlugin = {
-  tracing: {
-    expandTracing: function (viewed) {
-      assert.strictEqual(viewed, false);
-      return expandedPluginGroup;
-    }
-  },
-  remove: function () { throw new Error('expanded trace should replace the temporary plugin'); }
-};
+const temporaryPlugin = { typename: 'PluginItem', remove: function () { throw new Error('expanded plugin should replace the temporary plugin'); } };
 const sourcePlugin = {
   typename: 'PluginItem',
-  name: 'traced artwork',
-  isTracing: true,
+  name: 'third-party effect',
   duplicate: function () { return temporaryPlugin; },
   remove: function () { sourcePluginRemoved = true; }
 };
-context.app.redraw = function () { redrawCalls++; };
 context.app.activeDocument = {
-  name: 'traced-plugin.ai',
+  name: 'expand-plugin.ai',
   width: 100,
   height: 100,
   selection: [sourcePlugin]
 };
-const tracedPluginResult = JSON.parse(context.exportSelectionAsJSON('C:/out'));
-assert.strictEqual(tracedPluginResult.count, 1);
-assert.deepStrictEqual(tracedPluginResult.errors, []);
-assert.deepStrictEqual(tracedPluginResult.diagnostics || [], [{
+context.app.executeMenuCommand = function (command) {
+  assert.strictEqual(command, 'expandStyle');
+  expandCommandCalls++;
+  context.app.activeDocument.selection = [expandedPluginGroup];
+};
+const expandedPluginResult = JSON.parse(context.exportSelectionAsJSON('C:/out'));
+assert.strictEqual(expandedPluginResult.count, 1);
+assert.deepStrictEqual(expandedPluginResult.errors, []);
+assert.deepStrictEqual(expandedPluginResult.diagnostics || [], [{
   index: 1,
   type: 'PluginItem',
-  name: 'traced artwork',
+  name: 'third-party effect',
   status: 'exported',
-  isTracing: true,
-  temporaryExpansion: true
+  temporaryExpansion: true,
+  expansionCommand: 'expandStyle'
 }]);
-assert.strictEqual(redrawCalls, 1);
+assert.strictEqual(expandCommandCalls, 1);
 assert.strictEqual(sourcePluginRemoved, false);
 assert.strictEqual(expandedPluginRemoved, true);
+assert.strictEqual(context.app.activeDocument.selection[0], sourcePlugin);
 assert.strictEqual(JSON.parse(memoryFiles.get('C:/out/latest_sync.json')).groups.length, 1);
+
+memoryFiles.clear();
+let unchangedTemporaryRemoved = false;
+const unchangedPlugin = {
+  typename: 'PluginItem',
+  name: 'unexpandable effect',
+  duplicate: function () { return { typename: 'PluginItem', remove: function () { unchangedTemporaryRemoved = true; } }; }
+};
+context.app.activeDocument = {
+  name: 'unexpandable-plugin.ai',
+  width: 100,
+  height: 100,
+  selection: [unchangedPlugin]
+};
+context.app.executeMenuCommand = function (command) { assert.strictEqual(command, 'expandStyle'); };
+const unchangedPluginResult = JSON.parse(context.exportSelectionAsJSON('C:/out'));
+assert.strictEqual(unchangedPluginResult.count, 0);
+assert.strictEqual(unchangedTemporaryRemoved, true);
+assert.deepStrictEqual(unchangedPluginResult.diagnostics || [], [{
+  index: 1,
+  type: 'PluginItem',
+  name: 'unexpandable effect',
+  status: 'skipped',
+  reason: '自动扩展未生成可导出路径',
+  expansionCommand: 'expandStyle'
+}]);
+assert.deepStrictEqual(unchangedPluginResult.errors, ['第 1 项（PluginItem）已跳过：自动扩展未生成可导出路径']);
+assert.strictEqual(context.app.activeDocument.selection[0], unchangedPlugin);
+
+memoryFiles.clear();
+let emptySelectionTemporaryRemoved = false;
+const emptySelectionPlugin = {
+  typename: 'PluginItem',
+  name: 'empty expansion',
+  duplicate: function () { return { typename: 'PluginItem', remove: function () { emptySelectionTemporaryRemoved = true; } }; }
+};
+context.app.activeDocument = {
+  name: 'empty-expansion.ai',
+  width: 100,
+  height: 100,
+  selection: [emptySelectionPlugin]
+};
+context.app.executeMenuCommand = function (command) {
+  assert.strictEqual(command, 'expandStyle');
+  context.app.activeDocument.selection = [];
+};
+const emptySelectionResult = JSON.parse(context.exportSelectionAsJSON('C:/out'));
+assert.strictEqual(emptySelectionResult.count, 0);
+assert.strictEqual(emptySelectionTemporaryRemoved, true);
+assert.deepStrictEqual(emptySelectionResult.errors, ['第 1 项（PluginItem）已跳过：自动扩展未生成可导出路径']);
+assert.strictEqual(context.app.activeDocument.selection[0], emptySelectionPlugin);
+
+memoryFiles.clear();
+let failedTemporaryRemoved = false;
+const failedPlugin = {
+  typename: 'PluginItem',
+  name: 'broken effect',
+  duplicate: function () { return { typename: 'PluginItem', remove: function () { failedTemporaryRemoved = true; } }; }
+};
+context.app.activeDocument = {
+  name: 'failed-plugin.ai',
+  width: 100,
+  height: 100,
+  selection: [failedPlugin]
+};
+context.app.executeMenuCommand = function () { throw new Error('expand command failed'); };
+const failedPluginResult = JSON.parse(context.exportSelectionAsJSON('C:/out'));
+assert.strictEqual(failedPluginResult.count, 0);
+assert.strictEqual(failedTemporaryRemoved, true);
+assert.deepStrictEqual(failedPluginResult.diagnostics || [], [{
+  index: 1,
+  type: 'PluginItem',
+  name: 'broken effect',
+  status: 'skipped',
+  reason: '自动扩展失败: expand command failed',
+  expansionCommand: 'expandStyle'
+}]);
+assert.deepStrictEqual(failedPluginResult.errors, ['第 1 项（PluginItem）已跳过：自动扩展失败: expand command failed']);
+assert.strictEqual(context.app.activeDocument.selection[0], failedPlugin);
 
 let movingZ = 2;
 const movingPath = square(2, false);

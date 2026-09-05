@@ -440,8 +440,10 @@ function exportSelectionAsJSON(folderPath) {
         TEXT_OUTLINE_COUNTER = 0;
         COMPOUND_COUNTER = 0;
         var doc = app.activeDocument;
-        var sel = doc.selection;
-        if (!sel || sel.length < 1) { result.total = 0; return _jsonStringify(result); }
+        var selectedItems = doc.selection;
+        if (!selectedItems || selectedItems.length < 1) { result.total = 0; return _jsonStringify(result); }
+        var sel = [];
+        for (var si = 0; si < selectedItems.length; si++) sel.push(selectedItems[si]);
         result.total = sel.length;
         var s = 1; var paths = []; var groups = []; var images = [];
         var selectionZ = [];
@@ -464,31 +466,43 @@ function exportSelectionAsJSON(folderPath) {
                     result.errors.push("第 " + diagnostic.index + " 项（" + diagnostic.type + "）已跳过：" + diagnostic.reason);
                 }
             } else if (t === "PluginItem") {
-                diagnostic.isTracing = item.isTracing === true;
-                if (diagnostic.isTracing) {
-                    var temporaryPlugin = null, expandedPlugin = null;
-                    try {
-                        temporaryPlugin = item.duplicate();
-                        app.redraw();
-                        expandedPlugin = temporaryPlugin.tracing.expandTracing(false);
-                        groups.push(gd(expandedPlugin, s));
-                        diagnostic.temporaryExpansion = true;
-                    } catch (pluginError) {
-                        diagnostic.status = "skipped";
-                        diagnostic.reason = "图像描摹临时展开失败: " + pluginError.message;
-                        result.errors.push("第 " + diagnostic.index + " 项（PluginItem）已跳过：" + diagnostic.reason);
-                    } finally {
-                        var cleanupPlugin = expandedPlugin || temporaryPlugin;
-                        if (cleanupPlugin) try { cleanupPlugin.remove(); } catch (cleanupError) {
-                            diagnostic.status = "skipped";
-                            diagnostic.reason = "临时展开对象清理失败: " + cleanupError.message;
-                            result.errors.push("第 " + diagnostic.index + " 项（PluginItem）已跳过：" + diagnostic.reason);
-                        }
+                var temporaryPlugin = null, temporaryItems = [], cleanupErrorMessage = "";
+                diagnostic.expansionCommand = "expandStyle";
+                try {
+                    temporaryPlugin = item.duplicate();
+                    temporaryItems.push(temporaryPlugin);
+                    doc.selection = [temporaryPlugin];
+                    // ponytail: expandStyle only; add a plugin-specific command only after a real object requires it.
+                    app.executeMenuCommand("expandStyle");
+                    temporaryItems = [];
+                    for (var ti = 0; ti < doc.selection.length; ti++) temporaryItems.push(doc.selection[ti]);
+                    var expanded = false;
+                    for (var ei = 0; ei < temporaryItems.length; ei++) {
+                        var expandedItem = temporaryItems[ei], expandedType = expandedItem.typename;
+                        if (expandedType === "GroupItem") { groups.push(gd(expandedItem, s)); expanded = true; }
+                        else if (expandedType === "PathItem") { addPathAsGroup(expandedItem, paths, groups, s); expanded = true; }
+                        else if (expandedType === "CompoundPathItem") { aCP(expandedItem, paths, s); expanded = true; }
                     }
-                } else {
+                    if (expanded) {
+                        diagnostic.temporaryExpansion = true;
+                    } else {
+                        diagnostic.status = "skipped";
+                        diagnostic.reason = "自动扩展未生成可导出路径";
+                        result.errors.push("第 " + diagnostic.index + " 项（PluginItem）已跳过：" + diagnostic.reason);
+                    }
+                } catch (pluginError) {
                     diagnostic.status = "skipped";
-                    diagnostic.reason = "非图像描摹插件对象，无法无损读取路径";
+                    diagnostic.reason = "自动扩展失败: " + pluginError.message;
                     result.errors.push("第 " + diagnostic.index + " 项（PluginItem）已跳过：" + diagnostic.reason);
+                } finally {
+                    if (!temporaryItems.length && temporaryPlugin) temporaryItems.push(temporaryPlugin);
+                    for (var ci = temporaryItems.length - 1; ci >= 0; ci--) try { temporaryItems[ci].remove(); } catch (cleanupError) { cleanupErrorMessage = cleanupError.message; }
+                    try { doc.selection = sel; } catch (restoreError) { cleanupErrorMessage = "原选区恢复失败: " + restoreError.message; }
+                    if (cleanupErrorMessage) {
+                        diagnostic.status = "skipped";
+                        diagnostic.reason = "临时扩展对象清理失败: " + cleanupErrorMessage;
+                        result.errors.push("第 " + diagnostic.index + " 项（PluginItem）已跳过：" + diagnostic.reason);
+                    }
                 }
             } else {
                 diagnostic.status = "skipped";
