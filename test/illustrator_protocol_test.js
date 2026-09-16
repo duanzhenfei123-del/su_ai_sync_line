@@ -405,4 +405,18 @@ renameFailures.clear();
 assert.strictEqual(failedExport.errors.length, 1);
 assert.strictEqual(memoryFiles.get('C:/out/latest_sync.json'), 'known good');
 
+memoryFiles.clear();
+const defaultConfig = JSON.parse(context.readExportConfig());
+assert.strictEqual(defaultConfig.exportFolder, 'C:/Desktop/ai-export');
+assert.strictEqual(memoryFiles.has('C:/Desktop/ai-export/.ai-export-config'), false);
+assert.strictEqual(memoryFiles.has('C:/UserData/SU_AI_PNG_Export/.ai-export-config'), false);
+
+context.writeExportConfig('D:/custom-export');
+assert.strictEqual(memoryFiles.has('C:/Desktop/ai-export/.ai-export-config'), false);
+assert.strictEqual(memoryFiles.has('C:/UserData/SU_AI_PNG_Export/.ai-export-config'), true);
+
+memoryFiles.clear();
+memoryFiles.set('C:/Desktop/ai-export/.ai-export-config', '{"exportFolder":"D:/legacy-export"}');
+assert.strictEqual(JSON.parse(context.readExportConfig()).exportFolder, 'D:/legacy-export');
+
 console.log('PASS illustrator protocol');

@@ -422,6 +422,7 @@ function wg(g,f){
 function exportSelectionAsJSON(folderPath) {
     try {
         var cleanFolder = new Folder(folderPath);
+        if (!cleanFolder.exists) cleanFolder.create();
         if (cleanFolder.exists) {
             var allFiles = cleanFolder.getFiles();
             for (var fc = 0; fc < allFiles.length; fc++) {
@@ -576,15 +577,16 @@ function pickExportFolder(defaultPath) {
 }
 
 function readExportConfig() {
-    var cp = desktop.fsName + "/ai-export/.ai-export-config"; var f = new File(cp);
-    if (!f.exists) { var def = {exportFolder: desktop.fsName + "/ai-export"}; writeExportConfig(def.exportFolder); return _jsonStringify(def); }
+    var f = new File(Folder.userData.fsName + "/SU_AI_PNG_Export/.ai-export-config");
+    if (!f.exists) f = new File(desktop.fsName + "/ai-export/.ai-export-config");
+    if (!f.exists) return _jsonStringify({exportFolder: desktop.fsName + "/ai-export"});
     f.open("r"); var raw = f.read(); f.close();
     try { var cfg = eval("(" + raw + ")"); return _jsonStringify(cfg); } catch(e) { var def = {exportFolder: desktop.fsName + "/ai-export"}; return _jsonStringify(def); }
 }
 
 function writeExportConfig(ep) {
-    var d = new Folder(desktop.fsName + "/ai-export"); if (!d.exists) d.create();
-    var f = new File(desktop.fsName + "/ai-export/.ai-export-config"); f.encoding = "UTF-8"; f.open("w");
+    var d = new Folder(Folder.userData.fsName + "/SU_AI_PNG_Export"); if (!d.exists) d.create();
+    var f = new File(d.fsName + "/.ai-export-config"); f.encoding = "UTF-8"; f.open("w");
     f.write('{"exportFolder":"' + String(ep).replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"}'); f.close();
 }
 
