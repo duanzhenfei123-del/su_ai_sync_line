@@ -79,7 +79,7 @@ vm.createContext(context);
 const jsxPath = path.join(__dirname, '..', 'illustrator', 'su-ai-png-export', 'host', 'main.jsx');
 vm.runInContext(fs.readFileSync(jsxPath, 'utf8'), context, { filename: jsxPath });
 
-assert.strictEqual(context.VERSION, '3.7.2');
+assert.strictEqual(context.VERSION, '3.7.3');
 [
   'shortcutDataFolder', 'configureGlobalShortcuts',
   'ensureGlobalShortcutHost', 'touchGlobalShortcutHeartbeat',
