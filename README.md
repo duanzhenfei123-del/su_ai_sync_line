@@ -1,107 +1,53 @@
-# SU+AI 导入
+# SU+AI 同步
 
-`SU+AI 导入` 是一个 SketchUp 插件，用于将 AI 侧导出的同步数据快速导入 SketchUp，支持路径、分组、图片、文字轮廓等内容。
+将 Adobe Illustrator 的路径、文字轮廓、分组和图片导出为同步数据，再导入 SketchUp 继续建模。
 
-本仓库用于公开发布插件安装包、源码与使用说明，方便安装、学习、交流与非商业用途下的二次修改。
+当前发布版本：**v3.7.3**。
 
-## 项目预览
+## 下载与安装
 
-- 插件名称：`SU+AI 同步`
-- 当前版本：`v3.6`
-- 适用场景：将 AI 生成或整理后的图形数据同步到 SketchUp 中继续建模
+请从 [Releases](https://github.com/duanzhenfei123-del/su_ai_sync_line/releases) 下载同一版本的两个成品：
 
-## 功能特性
+1. `AI同步导入SU_2026_v*.rbz`：在 SketchUp 的“扩展管理器 → 安装扩展”中安装。
+2. `SU_AI_PNG_Export_v*_Setup.exe`：Windows 上运行安装器安装 Illustrator 端；也可使用同版本 ZIP 按包内《手动安装说明》安装。
 
-- 支持读取 AI 导出的 `.json` 同步数据
-- 支持导入路径、分组、图片与文字轮廓
-- 支持快速导入和控制面板两种入口
-- 支持设置导入比例
-- 支持设置曲线细分精度
-- 支持生成面
-- 支持按厚度拉伸成立体几何
-- 支持自定义导入目录
+首次在 Illustrator 面板点击导出时，若未选择其他目录，会在桌面创建 `ai-export`；启动插件本身不会创建该目录。
 
-## 仓库内容
+## 主要功能
 
-| 文件 | 说明 |
+- 路径、复合路径、文字轮廓、分组、图片和颜色同步。
+- SketchUp 导入、封面与拉成立体；文字孔洞和侧面朝向可正确处理。
+- `PluginItem` 轮廓导出时自动在临时副本执行“扩展外观”，不改动原对象。
+- AI 端不再安装全局快捷键钩子，避免影响 Illustrator 原生快捷键。
+
+## Release list
+
+| 版本 | 发布内容 | 说明 |
+| --- | --- | --- |
+| [v3.7.3](https://github.com/duanzhenfei123-del/su_ai_sync_line/releases/tag/v3.7.3) | SketchUp RBZ + AI ZIP/Windows 安装器 | 当前版本；AI 延迟创建默认导出目录，SU 导入端保持 v3.7.3。 |
+| [v3.7.2](https://github.com/duanzhenfei123-del/su_ai_sync_line/releases/tag/v3.7.2) | SketchUp RBZ + AI ZIP/Windows 安装器 | 支持 `PluginItem` 临时扩展后导出轮廓。 |
+| [v3.7.1](https://github.com/duanzhenfei123-del/su_ai_sync_line/releases/tag/v3.7.1) | AI ZIP/Windows 安装器 | 移除 AI 全局快捷键；与 v3.7 SketchUp 端配套。 |
+| [v3.7.0](https://github.com/duanzhenfei123-del/su_ai_sync_line/releases/tag/v3.7.0) | SketchUp RBZ + AI ZIP/Windows 安装器 | schema-v2 同步协议版本。 |
+| [v3.6.0](https://github.com/duanzhenfei123-del/su_ai_sync_line/releases/tag/v3.6.0) | SketchUp RBZ + AI Windows 安装器 + 使用说明 | 首个公开版本。 |
+
+旧版本仅用于兼容和回退。日常使用请安装同一 Release 中的成品；v3.7.1 是仅更新 AI 端的例外。
+
+## 仓库结构
+
+| 目录/文件 | 用途 |
 | --- | --- |
-| `su_ai_sync_v3.6.rbz` | SketchUp 插件安装包 |
-| `SU_AI_PNG_Export_v3.6_Setup.exe` | 配套安装程序 |
-| `SU_AI同步插件_v3.6_使用说明书.pdf` | 使用说明文档 |
-| `source/` | 从发布包整理出的插件源码 |
-| `LICENSE` | 非商业源码公开许可说明 |
-
-## 目录结构
-
-```text
-.
-├─ README.md
-├─ LICENSE
-├─ .gitignore
-├─ RELEASE_v3.6.md
-├─ su_ai_sync_v3.6.rbz
-├─ SU_AI_PNG_Export_v3.6_Setup.exe
-├─ SU_AI同步插件_v3.6_使用说明书.pdf
-└─ source/
-   ├─ su_ai_sync.rb
-   └─ su_ai_sync/
-```
-
-## 安装方式
-
-### 方式一：直接安装插件包
-
-1. 打开 SketchUp
-2. 进入“扩展管理器”
-3. 选择“安装扩展”
-4. 选中 `su_ai_sync_v3.6.rbz`
-5. 完成安装
-
-### 方式二：查看或修改源码
-
-如果你希望学习实现方式，或者在非商业用途前提下进行定制修改，可以直接查看 `source/` 目录中的 Ruby 源码。
+| `source/` | SketchUp Ruby 源码。 |
+| `illustrator/su-ai-png-export/` | Illustrator CEP 插件源码与手动安装说明。 |
+| `releases/` | 从 v3.7.2 起按版本保存的发布成品与校验说明。 |
+| `installer/` | AI Windows 安装器构建源码。 |
+| `RELEASE_v3.6.md`、`RELEASE_v3.7.1.md` | 历史版本说明。 |
 
 ## 使用流程
 
-1. 在 AI 侧导出同步数据到指定文件夹
-2. 在 SketchUp 中打开 `SU+AI 同步`
-3. 选择导入目录、导入比例、曲线精度等参数
-4. 点击“直接导入”或通过控制面板执行导入
+1. 在 Illustrator 面板选择导出目录并导出 JSON。
+2. 在 SketchUp 中打开“SU+AI 同步”，选择同一目录。
+3. 按需要设置比例、曲线精度、封面或拉伸后导入。
 
-更详细的图文说明请查看：
+## 许可
 
-- `SU_AI同步插件_v3.6_使用说明书.pdf`
-
-## 开源说明
-
-本项目采用“源码公开、禁止商用”的发布方式。
-
-你可以：
-
-- 查看和学习本仓库中的源码
-- 在保留原作者信息的前提下复制和分发本仓库内容
-- 在非商业用途下修改本项目并用于个人或团队内部使用
-
-你不可以：
-
-- 将本项目或其修改版本用于商业用途
-- 将本项目集成到收费产品、收费服务或商业项目中
-- 删除原有版权和许可说明
-
-具体条款请查看 [LICENSE](./LICENSE)。
-
-## 发布说明
-
-首个公开版本说明请查看：
-
-- [RELEASE_v3.6.md](./RELEASE_v3.6.md)
-
-## 说明
-
-- 当前仓库以发布版内容为主
-- `source/` 目录由插件包整理生成，便于源码查看与版本托管
-- 如果后续继续公开迭代，建议直接以 `source/` 作为主要开发目录维护
-
-## 致谢
-
-欢迎在非商业用途前提下提出 Issue、改进建议或优化版本。
+本项目源码公开，仅限学习、分发和非商业修改。禁止用于商业产品、收费服务或盈利性分发；详见 [LICENSE](./LICENSE)。
