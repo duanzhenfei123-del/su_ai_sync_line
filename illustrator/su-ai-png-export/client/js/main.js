@@ -65,14 +65,24 @@
 
     // ===== 获取选中信息 =====
 
-    function updateSelectionInfo() {
+    var lastSelCount = -1;
+    var selectionPollTimer = null;
+    var selectionStatusLocked = false;
+    var selectionExporting = false;
+
+    function pollSelectionInfo() {
+        if (selectionExporting || selectionStatusLocked || document.hidden) return;
         csInterface.evalScript("getSelectionInfo()", function (result) {
             try {
+                if (selectionExporting || selectionStatusLocked || document.hidden) return;
                 var info = JSON.parse(result);
-                if (info.count > 0) {
-                    setStatus("已选中 " + info.count + " 个对象", "info");
-                } else {
-                    setStatus("就绪 - 选择对象后点击导出", "");
+                if (info.count !== lastSelCount) {
+                    lastSelCount = info.count;
+                    if (info.count > 0) {
+                        setStatus("已选中 " + info.count + " 个对象", "info");
+                    } else {
+                        setStatus("就绪 - 选择对象后点击导出", "");
+                    }
                 }
             } catch (e) {
                 // ignore
@@ -80,9 +90,26 @@
         });
     }
 
+    function stopSelectionPolling() {
+        if (selectionPollTimer !== null) clearInterval(selectionPollTimer);
+        selectionPollTimer = null;
+    }
+
+    function startSelectionPolling() {
+        if (selectionPollTimer !== null || selectionExporting || selectionStatusLocked || document.hidden) return;
+        pollSelectionInfo();
+        selectionPollTimer = setInterval(pollSelectionInfo, 2000);
+    }
+
+    function unlockSelectionStatus() {
+        selectionStatusLocked = false;
+        lastSelCount = -1;
+    }
+
     // ===== 浏览导出目录 =====
 
     function browseFolder() {
+        unlockSelectionStatus();
         // 调用 AI 原生目录选择对话框
         var defaultPath = exportPathInput.value || "";
         csInterface.evalScript("pickExportFolder(\"" + escape(defaultPath) + "\")", function (result) {
@@ -91,6 +118,7 @@
                 saveExportConfig(result);
                 setStatus("导出目录已设置", "info");
             }
+            startSelectionPolling();
         });
     }
 
@@ -101,8 +129,13 @@
     // ===== 执行导出 =====
 
     function doExport() {
+        unlockSelectionStatus();
+        selectionExporting = true;
+        stopSelectionPolling();
         var folderPath = exportPathInput.value.trim();
         if (!folderPath || folderPath.length < 2) {
+            selectionExporting = false;
+            startSelectionPolling();
             setStatus("请先选择导出目录", "error");
             return;
         }
@@ -138,8 +171,6 @@
                 if (data.count > 0) {
                     setStatus("✅ 导出完成: " + data.count + "/" + data.total + " 个", "success");
                     addLog("✅ 成功导出 " + data.count + " 个 PNG", "ok");
-                    // 刷新选中信息
-                    updateSelectionInfo();
                 } else if (data.total === 0) {
                     setStatus("⚠️ 未选中任何对象", "error");
                     addLog("⚠️ 请先在 Illustrator 中选择对象", "err");
@@ -151,6 +182,8 @@
                 addLog("❌ " + (result || e.message), "err");
             }
 
+            selectionExporting = false;
+            selectionStatusLocked = true;
             exportBtn.disabled = false;
             exportBtn.textContent = "🖼 导出图片";
         });
@@ -159,8 +192,13 @@
     // ===== 热加载 =====
 
     function doJsonExport() {
+        unlockSelectionStatus();
+        selectionExporting = true;
+        stopSelectionPolling();
         var folderPath = exportPathInput.value.trim();
         if (!folderPath || folderPath.length < 2) {
+            selectionExporting = false;
+            startSelectionPolling();
             setStatus("请先选择导出目录", "error");
             return;
         }
@@ -195,7 +233,6 @@
                 if (data.count > 0) {
                     setStatus("✅ JSON 导出完成: " + data.count + " 个路径", "success");
                     addLog("✅ 文件: " + data.jsonFile, "ok");
-                    updateSelectionInfo();
                 } else if (data.total === 0) {
                     setStatus("⚠️ 未选中任何对象", "error");
                     addLog("⚠️ 请先在 Illustrator 中选择对象", "err");
@@ -206,12 +243,16 @@
                 setStatus("❌ JSON 导出失败: " + e.message, "error");
                 addLog("❌ " + (result || e.message), "err");
             }
+            selectionExporting = false;
+            selectionStatusLocked = true;
             exportJsonBtn.disabled = false;
             exportJsonBtn.textContent = "📄 导出轮廓";
         });
     }
 
     function reloadExtension() {
+        unlockSelectionStatus();
+        stopSelectionPolling();
         setStatus("正在重载...", "info");
         clearLog();
         addLog("重载 ExtendScript 后端...", "");
@@ -235,6 +276,7 @@
                 addLog("readExportConfig: " + result, result === "function" ? "ok" : "err");
             });
             setStatus("重载完成", "success");
+            startSelectionPolling();
         });
     }
 
@@ -247,6 +289,8 @@
     exportJsonBtn.addEventListener("click", doJsonExport);
 
     exportAsBtn.addEventListener("click", function() {
+        unlockSelectionStatus();
+        stopSelectionPolling();
         setStatus("正在打开导出对话框...", "info");
         csInterface.evalScript("openExportDialog()", function(result) {
             var r = result.replace(/"/g, "");
@@ -255,6 +299,7 @@
             } else {
                 setStatus("打开失败: " + r, "error");
             }
+            startSelectionPolling();
         });
     });
 
@@ -268,32 +313,20 @@
         if (e.key === "Enter") doExport();
     });
 
-    // ===== 定时刷新选中信息 =====
-    // 每 2 秒检查一次选中状态变化
-    var lastSelCount = -1;
-    setInterval(function () {
-        csInterface.evalScript("getSelectionInfo()", function (result) {
-            try {
-                var info = JSON.parse(result);
-                if (info.count !== lastSelCount) {
-                    lastSelCount = info.count;
-                    if (info.count > 0) {
-                        setStatus("已选中 " + info.count + " 个对象", "info");
-                    } else {
-                        setStatus("就绪 - 选择对象后点击导出", "");
-                    }
-                }
-            } catch (e) {}
-        });
-    }, 2000);
-
     // ===== 初始化 =====
 
     // 加载已保存的导出目录配置
     loadExportConfig();
     setStatus("就绪 - 选择对象后点击导出", "");
+    startSelectionPolling();
+
+    document.addEventListener("visibilitychange", function () {
+        if (document.hidden) stopSelectionPolling();
+        else startSelectionPolling();
+    });
 
     window.addEventListener("beforeunload", function () {
+        stopSelectionPolling();
         var path = exportPathInput.value.trim();
         if (path) saveExportConfig(path);
     });
