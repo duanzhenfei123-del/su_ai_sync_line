@@ -8,7 +8,7 @@
 
 请从 [Releases](https://github.com/duanzhenfei123-del/su_ai_sync_line/releases) 下载同一版本的两个成品：
 
-1. `AI同步导入SU_2026_v*.rbz`：在 SketchUp 的“扩展管理器 → 安装扩展”中安装。
+1. `SU_AI_Sync_Import_v*.rbz`：在 SketchUp 的“扩展管理器 → 安装扩展”中安装。
 2. `SU_AI_PNG_Export_v*_Setup.exe`：Windows 上运行安装器安装 Illustrator 端。
 
 首次在 Illustrator 面板点击导出时，若未选择其他目录，会在桌面创建 `ai-export`；启动插件本身不会创建该目录。
