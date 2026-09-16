@@ -17,6 +17,25 @@ assert_raises(ArgumentError, 'invalid collection rejected') do
   importer.send(:validate_data!, { 'schemaVersion' => 2, 'paths' => {} })
 end
 
+transitive_paths = [
+  { 'verticesMM' => [[0.049, 0], [10, 0]], 'isClosed' => false },
+  { 'verticesMM' => [[0.051, 0], [20, 0]], 'isClosed' => false },
+  { 'verticesMM' => [[0.0995, 0], [30, 0]], 'isClosed' => false }
+]
+assert_equal(2, importer.send(:snap_path_endpoints!, transitive_paths, 1.0), 'transitive endpoint cluster repaired')
+snapped_x = transitive_paths.map { |path| path['verticesMM'].first[0].round(4) }
+assert_equal([0.0665, 0.0665, 0.0665], snapped_x, 'adjacent grid endpoints merge once')
+
+closing_path = [{ 'verticesMM' => [[0, 0], [5, 0], [0.03, 0]], 'isClosed' => false }]
+assert_equal(1, importer.send(:snap_path_endpoints!, closing_path, 1.0), 'path endpoints repaired')
+assert_equal(true, closing_path.first['isClosed'], 'same cluster closes path')
+
+separate_paths = [
+  { 'verticesMM' => [[0, 0], [10, 0]], 'isClosed' => false },
+  { 'verticesMM' => [[0.051, 0], [20, 0]], 'isClosed' => false }
+]
+assert_equal(0, importer.send(:snap_path_endpoints!, separate_paths, 1.0), 'distant endpoints remain separate')
+
 compact_group = {
   'name' => 'outer',
   'paths' => [{

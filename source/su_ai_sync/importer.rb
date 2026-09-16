@@ -218,24 +218,64 @@
         endpoints << [path, 0, vertices.first[0].to_f, vertices.first[1].to_f]
         endpoints << [path, vertices.length - 1, vertices.last[0].to_f, vertices.last[1].to_f]
       end
-      repaired = 0
+
+      return 0 if endpoints.length < 2
+
+      buckets = Hash.new { |hash, key| hash[key] = [] }
       endpoints.each_with_index do |endpoint, index|
-        next if endpoint[4]
-        cluster = [endpoint]
-        endpoints[(index + 1)..-1].to_a.each do |other|
-          dx = endpoint[2] - other[2]; dy = endpoint[3] - other[3]
-          cluster << other if dx * dx + dy * dy <= tolerance_squared
+        buckets[[(endpoint[2] / tolerance).floor, (endpoint[3] / tolerance).floor]] << index
+      end
+
+      parents = (0...endpoints.length).to_a
+      find_root = lambda do |index|
+        root = index
+        root = parents[root] while parents[root] != root
+        while parents[index] != index
+          parent = parents[index]
+          parents[index] = root
+          index = parent
         end
+        root
+      end
+      merge = lambda do |left, right|
+        left_root = find_root.call(left)
+        right_root = find_root.call(right)
+        parents[right_root] = left_root unless left_root == right_root
+      end
+
+      # ponytail: a fully dense tolerance cell still compares pairs; add a spatial index only if dense artwork is measured slow.
+      endpoints.each_with_index do |endpoint, index|
+        cell_x = (endpoint[2] / tolerance).floor
+        cell_y = (endpoint[3] / tolerance).floor
+        (-1..1).each do |offset_x|
+          (-1..1).each do |offset_y|
+            buckets[[cell_x + offset_x, cell_y + offset_y]].each do |other_index|
+              next if other_index <= index
+
+              other = endpoints[other_index]
+              dx = endpoint[2] - other[2]
+              dy = endpoint[3] - other[3]
+              merge.call(index, other_index) if dx * dx + dy * dy <= tolerance_squared
+            end
+          end
+        end
+      end
+
+      clusters = Hash.new { |hash, key| hash[key] = [] }
+      endpoints.each_with_index { |endpoint, index| clusters[find_root.call(index)] << endpoint }
+      repaired = 0
+      clusters.each_value do |cluster|
         next if cluster.length < 2
+
         x = cluster.sum { |entry| entry[2] } / cluster.length
         y = cluster.sum { |entry| entry[3] } / cluster.length
-        counts = Hash.new(0)
+        path_counts = {}
         cluster.each do |entry|
           entry[0]['verticesMM'][entry[1]] = [x, y]
-          counts[entry[0].object_id] += 1
-          entry << true
+          path_counts[entry[0].object_id] ||= [entry[0], 0]
+          path_counts[entry[0].object_id][1] += 1
         end
-        counts.each { |path_id, count| paths.find { |path| path.object_id == path_id }['isClosed'] = true if count > 1 }
+        path_counts.each_value { |path, count| path['isClosed'] = true if count > 1 }
         repaired += cluster.length - 1
       end
       repaired
