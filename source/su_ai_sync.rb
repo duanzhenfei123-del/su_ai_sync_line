@@ -3,7 +3,7 @@ require "json"
 require "fileutils"
 
 module SU_AI_Sync
-  VERSION = "3.7"
+  VERSION = "3.7.3"
   IS_WINDOWS = Sketchup.platform == :platform_win
   USER_HOME = (ENV["USERPROFILE"] || ENV["HOME"] || Dir.home).freeze
   APP_DATA_DIR = if IS_WINDOWS
