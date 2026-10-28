@@ -299,31 +299,21 @@ function aP(item,ps,s){
 function aCP(item,ps,s,compoundKey){
     var key=compoundKey||nextCompoundKey();
     var zIndex=itemZIndex(item,0);
-    releaseCompoundPaths(item,ps,s,key,zIndex);
+    var paths=documentCompoundPaths(item);
+    if(!paths.length) throw new Error("复合路径不包含可导出的子路径");
+    for(var i=0;i<paths.length;i++){var d=pd(paths[i],s);d.id="p_"+padZero(ps.length,3);d.name=item.name||("p"+ps.length);d.compoundKey=key;d.zIndex=zIndex;ps.push(d);}
 }
 
-function releaseCompoundPaths(item,ps,s,key,zIndex){
-    var original=app.activeDocument, temp=null, start=ps.length;
-    try {
-        temp=app.documents.add(original.documentColorSpace);
-        var copy=item.duplicate(temp,ElementPlacement.PLACEATEND), before=copy.geometricBounds, target=item.geometricBounds;
-        copy.translate(target[0]-before[0],target[1]-before[1]);
-        temp.selection=[copy];
-        app.executeMenuCommand("noCompoundPath");
-        function collect(node){
-            if (node.typename==="PathItem") {
-                var d=pd(node,s); d.id="p_"+padZero(ps.length,3); d.name=item.name||("p"+ps.length); d.compoundKey=key; d.zIndex=zIndex; ps.push(d);
-            } else if (node.typename==="GroupItem") {
-                for(var i=0;i<node.pageItems.length;i++) if(node.pageItems[i].parent===node) collect(node.pageItems[i]);
-            } else throw new Error("释放复合路径后出现不支持的对象："+node.typename);
+function documentCompoundPaths(item){
+    var all=app.activeDocument.pathItems, paths=[];
+    for(var i=0;i<all.length;i++){
+        var parent=all[i].parent;
+        while(parent && parent.typename!=="Document"){
+            if(parent===item){paths.push(all[i]);break;}
+            parent=parent.parent;
         }
-        var selected=temp.selection;
-        for(var i=0;i<selected.length;i++) collect(selected[i]);
-        if (ps.length===start) throw new Error("释放复合路径后没有可导出的路径");
-    } finally {
-        if(temp) temp.close(SaveOptions.DONOTSAVECHANGES);
-        original.activate();
     }
+    return paths;
 }
 
 function expandNestedPlugin(item,paths,groups,s,warnings){

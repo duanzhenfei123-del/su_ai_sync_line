@@ -79,18 +79,6 @@ vm.createContext(context);
 const jsxPath = path.join(__dirname, '..', 'illustrator', 'su-ai-png-export', 'host', 'main.jsx');
 vm.runInContext(fs.readFileSync(jsxPath, 'utf8'), context, { filename: jsxPath });
 
-// The Node harness has no Illustrator documents; model the released paths.
-context.releaseCompoundPaths = function (item, paths, scale, key, z) {
-  item.pathItems.forEach(function (p) {
-    const d = context.pd(p, scale);
-    d.id = 'p_' + context.padZero(paths.length, 3);
-    d.name = item.name || ('p' + paths.length);
-    d.compoundKey = key;
-    d.zIndex = z;
-    paths.push(d);
-  });
-};
-
 assert.strictEqual(context.VERSION, '3.7.3');
 [
   'shortcutDataFolder', 'configureGlobalShortcuts',
@@ -153,6 +141,18 @@ function fakeTextWithCompoundOutline() {
   };
 }
 
+const nestedCompound = { typename: 'CompoundPathItem' };
+const nestedGroup = { typename: 'GroupItem', parent: nestedCompound };
+const deepPath = square(1, false);
+deepPath.parent = nestedGroup;
+const otherPath = square(1, false);
+otherPath.parent = {};
+context.app.activeDocument = { pathItems: [otherPath, deepPath] };
+assert.strictEqual(context.documentCompoundPaths(nestedCompound)[0], deepPath);
+assert.strictEqual(context.documentCompoundPaths(nestedCompound).length, 1);
+// Remaining fixtures model document paths with item.pathItems.
+context.documentCompoundPaths = function (item) { return item.pathItems; };
+
 assert.strictEqual(context.itemZIndex({ zOrderPosition: 7 }, 3), 7);
 assert.strictEqual(context.itemZIndex({}, 3), 3);
 const lowerItem = { zOrderPosition: 7 };
@@ -182,20 +182,15 @@ assert.strictEqual(compoundPaths[1].compoundKey, compoundPaths[0].compoundKey);
 assert.strictEqual(compoundPaths[0].zIndex, 8);
 assert.strictEqual(compoundPaths[1].zIndex, 8);
 
-// Illustrator may expose only some subpaths even though compound bounds cover more.
-const partialCompound = { name: 'partial', geometricBounds: [0, 20, 100, 0], pathItems: [square(1, false)] };
-let released = false;
-const originalRelease = context.releaseCompoundPaths;
-context.releaseCompoundPaths = function (item, paths, scale, key, z) { released = true; [square(1, false), square(1, false)].forEach(function (p) { const d = context.pd(p, scale); d.compoundKey = key; d.zIndex = z; paths.push(d); }); };
+// The document collection can contain paths hidden from the compound collection.
+const partialCompound = { name: 'partial', pathItems: [square(1, false)] };
+const originalDocumentPaths = context.documentCompoundPaths;
+context.documentCompoundPaths = function () { return [square(1, false), square(1, false)]; };
 const recoveredPaths = [];
 context.aCP(partialCompound, recoveredPaths, 1);
-assert.strictEqual(released, true);
 assert.strictEqual(recoveredPaths.length, 2);
 assert.strictEqual(recoveredPaths[0].compoundKey, recoveredPaths[1].compoundKey);
-released = false;
-context.aCP({ name: 'matching bounds', geometricBounds: [0, 10, 10, 0], pathItems: [square(1, false)], duplicate: function () {} }, [], 1);
-assert.strictEqual(released, true, 'matching bounds do not prove all compound contours are exposed');
-context.releaseCompoundPaths = originalRelease;
+context.documentCompoundPaths = originalDocumentPaths;
 const originalExpand = context.expandNestedPlugin;
 let nestedExpanded = false;
 context.expandNestedPlugin = function (item, paths) { nestedExpanded = true; paths.push({ id: 'expanded' }); };
