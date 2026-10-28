@@ -177,9 +177,16 @@ clippingPath.clipping = true;
 const clipped = context.gd({ clipped: true, pageItems: [clippingPath, image] }, 1, []);
 assert.strictEqual(clipped.paths.length, 1);
 assert.strictEqual(clipped.paths[0].vs.length, 4);
-assert.throws(function () {
-  context.gd({ clipped: true, pageItems: [clippingPath, { typename: 'PlacedItem', geometricBounds: [2, 8, 8, 2] }] }, 1, []);
-}, /蒙版/);
+const partialImage = { typename: 'PlacedItem', geometricBounds: [2, 8, 8, 2], visibleBounds: [2, 8, 8, 2] };
+const partialClip = context.gd({ clipped: true, pageItems: [clippingPath, partialImage] }, 1, []);
+assert.strictEqual(partialClip.paths.length, 1);
+const concaveMask = square(1, false);
+concaveMask.clipping = true;
+concaveMask.pathPoints = [point(0, 0), point(10, 0), point(5, 5), point(10, 10), point(0, 10)];
+assert.throws(function () { context.gd({ clipped: true, pageItems: [concaveMask, partialImage] }, 1, []); }, /凹形蒙版/);
+
+const partialCoords = partialClip.paths[0].vs;
+assert.ok(partialCoords.every(function (p) { return p[0] >= context.mm(2) - 0.001 && p[0] <= context.mm(8) + 0.001 && p[1] >= context.mm(2) - 0.001 && p[1] <= context.mm(8) + 0.001; }));
 const grouped = context.gd(fakeGroupWithPath(7), 1);
 assert.strictEqual(grouped.zIndex, 7);
 

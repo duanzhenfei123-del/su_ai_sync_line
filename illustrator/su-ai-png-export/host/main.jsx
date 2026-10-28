@@ -396,8 +396,17 @@ function gd(item,s,warnings){
         }
         if(!mask || !image) throw new Error("蒙版组缺少可导出的图片或蒙版路径");
         var mb=mask.geometricBounds, corners=imageCorners(image);
-        if(!mb || !boundsInsideImage(mb,corners))
-            throw new Error("蒙版超出图片边界，暂无法准确导出交集");
+        if(!mb) throw new Error("无法读取蒙版边界");
+        if(!boundsInsideImage(mb,corners)){
+            if(mask.typename!=="PathItem" || !mask.closed) throw new Error("复合或开放蒙版超出图片边界，暂无法准确导出交集");
+            var clippedPath=pd(mask,s), subject=subdividePath(clippedPath.vs,clippedPath.cv,true), imagePoly=[];
+            for(var ci=0;ci<corners.length;ci++) imagePoly.push([mm(corners[ci][0])*s,mm(corners[ci][1])*s]);
+            if(!convexPolygon(subject)) throw new Error("凹形蒙版超出图片边界，暂无法准确导出交集");
+            clippedPath.vs=clipConvexPolygon(subject,imagePoly); clippedPath.cv=[]; clippedPath.cl=true;
+            if(clippedPath.vs.length<3) throw new Error("蒙版与图片没有可导出的可见区域");
+            clippedPath.id="p_"+padZero(g.paths.length,3); clippedPath.name=mask.name||"mask";
+            g.paths.push(clippedPath); return g;
+        }
         if(mask.typename==="CompoundPathItem") aCP(mask,g.paths,s);
         else aP(mask,g.paths,s);
         return g;
@@ -445,6 +454,7 @@ function imageCorners(item){
         for(var i=0;i<local.length;i++) result.push([local[i][0]*m.mValueA+local[i][1]*m.mValueC+m.mValueTX,local[i][0]*m.mValueB+local[i][1]*m.mValueD+m.mValueTY]);
         return result;
     }
+    if(m && (Math.abs(m.mValueB)>0.000001 || Math.abs(m.mValueC)>0.000001)) throw new Error("无法读取旋转图片的原始边界");
     b=item.geometricBounds || item.visibleBounds;
     if(!b) throw new Error("无法读取图片边界");
     return [[b[0],b[1]],[b[2],b[1]],[b[2],b[3]],[b[0],b[3]]];
@@ -462,6 +472,39 @@ function boundsInsideImage(b,corners){
         if(positive && negative)return false;
     }
     return true;
+}
+
+function convexPolygon(points){
+    var positive=false,negative=false;
+    for(var i=0;i<points.length;i++){
+        var a=points[i],b=points[(i+1)%points.length],c=points[(i+2)%points.length];
+        var cross=(b[0]-a[0])*(c[1]-b[1])-(b[1]-a[1])*(c[0]-b[0]);
+        if(cross>0.000001)positive=true; if(cross< -0.000001)negative=true;
+    }
+    return !(positive && negative);
+}
+
+function clipConvexPolygon(subject,clip){
+    var area=0;
+    for(var i=0;i<clip.length;i++){var a=clip[i],b=clip[(i+1)%clip.length];area+=a[0]*b[1]-b[0]*a[1];}
+    if(Math.abs(area)<0.000001) throw new Error("图片边界无效");
+    var sign=area>0?1:-1, result=subject;
+    for(var j=0;j<clip.length;j++){
+        var edgeA=clip[j],edgeB=clip[(j+1)%clip.length], input=result; result=[];
+        if(!input.length)break;
+        function side(p){return sign*((edgeB[0]-edgeA[0])*(p[1]-edgeA[1])-(edgeB[1]-edgeA[1])*(p[0]-edgeA[0]));}
+        var prev=input[input.length-1],prevSide=side(prev);
+        for(var k=0;k<input.length;k++){
+            var curr=input[k],currSide=side(curr);
+            if((currSide>=0)!==(prevSide>=0)){
+                var t=prevSide/(prevSide-currSide);
+                result.push([r4(prev[0]+t*(curr[0]-prev[0])),r4(prev[1]+t*(curr[1]-prev[1]))]);
+            }
+            if(currSide>=0)result.push(curr);
+            prev=curr;prevSide=currSide;
+        }
+    }
+    return result;
 }
 
 function imgOutline(item){
