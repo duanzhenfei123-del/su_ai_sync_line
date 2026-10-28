@@ -385,11 +385,28 @@ function addPathAsGroup(item, targetPaths, targetGroups, scale){
 function gd(item,s,warnings){
     log("gd: group " + (item.name||"unnamed"));
     var g={name:item.name||"G",paths:[],groups:[],zIndex:itemZIndex(item,0)};
+    if(item.clipped){
+        var mask=null, image=null;
+        for(var mi=0;mi<item.pageItems.length;mi++){
+            var child=item.pageItems[mi], ct=child.typename;
+            if(ct==="PathItem" && child.clipping) mask=child;
+            else if(ct==="CompoundPathItem" && child.pathItems.length && child.pathItems[0].clipping) mask=child;
+            else if((ct==="RasterItem"||ct==="PlacedItem") && !image) image=child;
+            else throw new Error("蒙版组包含暂不支持的对象："+ct);
+        }
+        if(!mask || !image) throw new Error("蒙版组缺少可导出的图片或蒙版路径");
+        var mb=mask.geometricBounds, corners=imageCorners(image);
+        if(!mb || !boundsInsideImage(mb,corners))
+            throw new Error("蒙版超出图片边界，暂无法准确导出交集");
+        if(mask.typename==="CompoundPathItem") aCP(mask,g.paths,s);
+        else aP(mask,g.paths,s);
+        return g;
+    }
     for(var i=0;i<item.pageItems.length;i++){var c=item.pageItems[i];var t=c.typename;
         if(t==="GroupItem")g.groups.push(gd(c,s,warnings));
         else if(t==="TextFrame"||t==="TextArtItem"){var o=otl(c,s);for(var j=0;j<o.length;j++)g.paths.push(o[j]);}
         else if(t==="PathItem")addPathAsGroup(c,g.paths,g.groups,s);
-        else if(t==="RasterItem"||t==="PlacedItem"){if(!item.clipped&&(!c.stroked||c.strokeWidth<=0)){g.paths.push(imgOutline(c));if(warnings)warnings.push("组内图片只导出了边框，无法提取图片内容的轮廓");}else throw new Error("组内图片无法转换为轮廓");}
+        else if(t==="RasterItem"||t==="PlacedItem")g.paths.push(imgOutline(c));
         else if(t==="CompoundPathItem")aCP(c,g.paths,s);
         else if(t==="PluginItem")expandNestedPlugin(c,g.paths,g.groups,s,warnings);
         else throw new Error("组内存在不支持的对象类型："+t);
@@ -421,9 +438,35 @@ function otl(item,s){
     return o;
 }
 
+function imageCorners(item){
+    var b=item.boundingBox, m=item.matrix;
+    if(b && m){
+        var local=[[b[0],b[1]],[b[2],b[1]],[b[2],b[3]],[b[0],b[3]]], result=[];
+        for(var i=0;i<local.length;i++) result.push([local[i][0]*m.mValueA+local[i][1]*m.mValueC+m.mValueTX,local[i][0]*m.mValueB+local[i][1]*m.mValueD+m.mValueTY]);
+        return result;
+    }
+    b=item.geometricBounds || item.visibleBounds;
+    if(!b) throw new Error("无法读取图片边界");
+    return [[b[0],b[1]],[b[2],b[1]],[b[2],b[3]],[b[0],b[3]]];
+}
+
+function boundsInsideImage(b,corners){
+    var points=[[b[0],b[1]],[b[2],b[1]],[b[2],b[3]],[b[0],b[3]]];
+    for(var i=0;i<points.length;i++){
+        var positive=false, negative=false;
+        for(var j=0;j<4;j++){
+            var a=corners[j], z=corners[(j+1)%4];
+            var cross=(z[0]-a[0])*(points[i][1]-a[1])-(z[1]-a[1])*(points[i][0]-a[0]);
+            if(cross>0.01)positive=true; if(cross< -0.01)negative=true;
+        }
+        if(positive && negative)return false;
+    }
+    return true;
+}
+
 function imgOutline(item){
-    var b=item.visibleBounds;
-    var vs=[[r4(mm(b[0])),r4(mm(b[1]))],[r4(mm(b[2])),r4(mm(b[1]))],[r4(mm(b[2])),r4(mm(b[3]))],[r4(mm(b[0])),r4(mm(b[3]))]];
+    var corners=imageCorners(item),vs=[];
+    for(var i=0;i<corners.length;i++)vs.push([r4(mm(corners[i][0])),r4(mm(corners[i][1]))]);
     return{id:"img_"+Math.random().toString(36).substr(2,9),name:item.name||"Image",cl:true,fc:"",sc:"000000",sw:0,sp:"center",zIndex:itemZIndex(item,0),vs:vs};
 }
 
@@ -492,7 +535,7 @@ function exportSelectionAsJSON(folderPath) {
             if (t === "GroupItem") { groups.push(gd(item, s, result.errors)); }
             else if (t === "TextFrame" || t === "TextArtItem") { var tp = otl(item, s); for (var j = 0; j < tp.length; j++) paths.push(tp[j]); }
             else if (t === "PathItem") { addPathAsGroup(item, paths, groups, s); }
-            else if (t === "RasterItem" || t === "PlacedItem") { if (!item.stroked || item.strokeWidth <= 0) { paths.push(imgOutline(item)); result.errors.push("第 " + diagnostic.index + " 项图片只导出了边框，无法提取图片内容的轮廓"); } else { diagnostic.status = "skipped"; diagnostic.reason = "图片无法转换为轮廓"; result.errors.push("第 " + diagnostic.index + " 项已跳过：" + diagnostic.reason); } }
+            else if (t === "RasterItem" || t === "PlacedItem") { paths.push(imgOutline(item)); }
             else if (t === "CompoundPathItem") {
                 diagnostic.pathCount = item.pathItems ? item.pathItems.length : 0;
                 if (diagnostic.pathCount > 0 || item.duplicate) {

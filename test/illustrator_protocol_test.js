@@ -163,9 +163,23 @@ upperItem.parent = mixedParent;
 assert.strictEqual(context.itemZIndex(upperItem, 0), 2);
 assert.strictEqual(context.itemZIndex(lowerItem, 0), 1);
 
-const rasterWarnings = [];
-context.gd({ pageItems: [{ typename: 'RasterItem', visibleBounds: [0, 10, 10, 0] }] }, 1, rasterWarnings);
-assert.match(rasterWarnings[0], /只导出了边框/);
+const image = { typename: 'PlacedItem', geometricBounds: [0, 100, 100, 0], visibleBounds: [0, 100, 100, 0] };
+const imageWarnings = [];
+const imageGroup = context.gd({ pageItems: [image] }, 1, imageWarnings);
+assert.strictEqual(imageGroup.paths.length, 1);
+assert.deepStrictEqual(imageWarnings, []);
+const rotatedImage = { typename: 'PlacedItem', boundingBox: [0, 10, 10, 0], matrix: { mValueA: 1, mValueB: 1, mValueC: -1, mValueD: 1, mValueTX: 0, mValueTY: 0 } };
+const rotatedOutline = context.imgOutline(rotatedImage);
+assert.notStrictEqual(rotatedOutline.vs[0][0], rotatedOutline.vs[1][0]);
+assert.notStrictEqual(rotatedOutline.vs[0][1], rotatedOutline.vs[1][1]);
+const clippingPath = square(1, false);
+clippingPath.clipping = true;
+const clipped = context.gd({ clipped: true, pageItems: [clippingPath, image] }, 1, []);
+assert.strictEqual(clipped.paths.length, 1);
+assert.strictEqual(clipped.paths[0].vs.length, 4);
+assert.throws(function () {
+  context.gd({ clipped: true, pageItems: [clippingPath, { typename: 'PlacedItem', geometricBounds: [2, 8, 8, 2] }] }, 1, []);
+}, /蒙版/);
 const grouped = context.gd(fakeGroupWithPath(7), 1);
 assert.strictEqual(grouped.zIndex, 7);
 
