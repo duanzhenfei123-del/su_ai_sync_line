@@ -8,7 +8,6 @@ module SU_AI_Sync
     def get_color(hex)
       normalized = hex.to_s.delete('#').upcase
       return nil unless normalized.length == 6
-      return nil if normalized == 'FFFFFF'
       cache_key = "Sync_#{normalized}"
       return @cache[cache_key] if @cache[cache_key]
       existing = @materials[cache_key]

@@ -41,6 +41,15 @@ end
 model = Sketchup.active_model
 fixture_dir = File.expand_path('fixtures/compound', __dir__)
 
+existing_white = model.materials['Sync_FFFFFF']
+begin
+  white = SU_AI_Sync::MaterialManager.new.get_color('FFFFFF')
+  assert_equal(true, !white.nil?, 'white uses an explicit material')
+  assert_equal([255, 255, 255], [white.color.red, white.color.green, white.color.blue], 'white material preserves AI color')
+ensure
+  model.materials.remove(white) if !existing_white && white
+end
+
 created = []
 begin
   before = model.entities.to_a
