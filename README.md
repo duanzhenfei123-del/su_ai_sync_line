@@ -2,7 +2,7 @@
 
 将 Adobe Illustrator 的路径、文字轮廓、分组和图片导出为同步数据，再导入 SketchUp 继续建模。
 
-当前发布版本：**v3.7.3**。
+当前版本：**v3.7.4**。
 
 ## 下载与安装
 
@@ -17,14 +17,17 @@
 
 - 路径、复合路径、文字轮廓、分组、图片和颜色同步。
 - SketchUp 导入、封面与拉成立体；文字孔洞和侧面朝向可正确处理。
-- `PluginItem` 轮廓导出时自动在临时副本执行“扩展外观”，不改动原对象。
+- 复合路径从文档中读取，图片导出边界；剪切蒙版支持图片覆盖整个蒙版及部分凸形蒙版交集。
+- 蒙版超出图片时，凹形或复合蒙版、多个对象的复杂组合暂不支持；图片透明像素不会自动转为轮廓。
+- `PluginItem` 轮廓导出时自动在临时副本执行“扩展外观”。
 - AI 端不再安装全局快捷键钩子，避免影响 Illustrator 原生快捷键。
 
 ## Release list
 
 | 版本 | 发布内容 | 说明 |
 | --- | --- | --- |
-| [v3.7.3](https://github.com/duanzhenfei123-del/su_ai_sync_line/releases/tag/v3.7.3) | SketchUp RBZ + AI Windows 安装器 | 当前版本；AI 延迟创建默认导出目录，SU 导入端保持 v3.7.3。 |
+| [v3.7.4](https://github.com/duanzhenfei123-del/su_ai_sync_line/releases/tag/v3.7.4) | SketchUp RBZ + AI Windows 安装器 | 复合路径、图片蒙版轮廓及白色材质修复。 |
+| [v3.7.3](https://github.com/duanzhenfei123-del/su_ai_sync_line/releases/tag/v3.7.3) | SketchUp RBZ + AI Windows 安装器 | AI 延迟创建默认导出目录。 |
 | [v3.7.2](https://github.com/duanzhenfei123-del/su_ai_sync_line/releases/tag/v3.7.2) | SketchUp RBZ + AI Windows 安装器 | 支持 `PluginItem` 临时扩展后导出轮廓。 |
 | [v3.7.1](https://github.com/duanzhenfei123-del/su_ai_sync_line/releases/tag/v3.7.1) | SketchUp v3.7 RBZ + AI Windows 安装器 | 移除 AI 全局快捷键。 |
 | [v3.7.0](https://github.com/duanzhenfei123-del/su_ai_sync_line/releases/tag/v3.7.0) | SketchUp RBZ + AI Windows 安装器 | schema-v2 同步协议版本。 |

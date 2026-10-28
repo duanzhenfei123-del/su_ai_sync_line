@@ -5,16 +5,16 @@
 ## 当前状态
 
 - 仓库：`git@github.com:duanzhenfei123-del/su_ai_sync_line.git`
-- 主分支：`main`，最近一次 README/Release 规范提交为 `4aa07aa`。
-- 当前配套版本：SketchUp `v3.7.3` + Illustrator `v3.7.3`。
-- 已推送标签：`v3.6.0`、`v3.7.0`、`v3.7.1`、`v3.7.2`、`v3.7.3`。
+- 主分支：`main`。
+- 当前配套版本：SketchUp `v3.7.4` + Illustrator `v3.7.4`。
+- 历史标签包括 `v3.6.0` 至 `v3.7.3`；v3.7.4 发布状态以 Git 和 GitHub Releases 为准。
 - GitHub Releases 已按版本建立；每个版本只手动附加 SketchUp RBZ 和 AI Windows 安装器 EXE。GitHub 自动生成的 Source code ZIP/TAR 不属于手动上传附件。
 - `v3.7.1` 是 AI 端维护版，SketchUp 端使用兼容的 `v3.7` RBZ。
 
 ## 继续开发约束
 
 - SketchUp `v3.6` 面板布局和用户操作保持不变；后台能力可调整。
-- 当前优化范围只有两项：端点吸附改为空间分桶；导入期间暂停 AI 面板选区轮询并保留导出完成提示。除非用户重新授权，不扩展其他优化项。
+- v3.7.4 调整复合路径、图片和蒙版轮廓、灰度颜色转换及白色材质；复杂蒙版与透明像素的限制见 README。
 - AI 端不恢复全局快捷键钩子；Illustrator 原生快捷键必须放行。
 - 默认导出目录只在用户点击导出时创建；未自定义路径时使用桌面的 `ai-export`。
 - 日志保持单份：点击导入后删除历史日志，再生成本次导入日志。
@@ -24,7 +24,7 @@
 
 1. 先完成代码、测试和成品打包，再提交并推送 `main`。
 2. 每次上传前都更新 `README.md`，必须包含：软件简介、适用端（SketchUp/Illustrator）、安装方式、基本使用方法、当前版本和 Release list 链接。
-3. Release 使用语义化标签 `vX.Y.Z`，标题写成 `SU+AI 同步 vX.Y.Z`，并保持 v3.7.3 这类稳定版为 Latest。
+3. Release 使用语义化标签 `vX.Y.Z`，标题写成 `SU+AI 同步 vX.Y.Z`，并保持最新稳定版为 Latest。
 4. Release 下载方式统一为 GitHub Releases；不要把根目录散落文件当作主要下载入口。
 5. 每个 Release 只上传两个手动附件：
    - SketchUp 导入端：`SU_AI_Sync_Import_vX.Y.Z.rbz`（若该 SU 端兼容上一小版本，在 Release 说明中写明）。
@@ -47,7 +47,7 @@
   `node test\\ai_global_shortcut_removal_test.js`
   `node test\\ai_selection_polling_test.js`
 - 修改安装器版本时，复制对应 `installer/ai-vX.Y.Z/`，同步更新 `Program.cs`、`InstallerForm.cs`、`app.manifest` 和 `build.ps1`，不要改写旧版目录。
-- SketchUp Ruby 自动化测试需要在 SketchUp 内运行；命令行没有可用的 SketchUp Ruby 运行时。
+- SketchUp Ruby 自动化测试需要在 SketchUp 内运行；命令行没有可用的 SketchUp Ruby 运行时。v3.7.4 白色材质回归测试尚未在 SketchUp 内运行；发布说明需明确标注。
 
 ## 回滚
 

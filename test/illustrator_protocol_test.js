@@ -82,7 +82,7 @@ vm.runInContext(fs.readFileSync(jsxPath, 'utf8'), context, { filename: jsxPath }
 assert.strictEqual(context.hex({ typename: 'GrayColor', gray: 0 }), 'FFFFFF');
 assert.strictEqual(context.hex({ typename: 'GrayColor', gray: 100 }), '000000');
 assert.strictEqual(context.hex({ typename: 'GrayColor', gray: 50 }), '808080');
-assert.strictEqual(context.VERSION, '3.7.3');
+assert.strictEqual(context.VERSION, '3.7.4');
 [
   'shortcutDataFolder', 'configureGlobalShortcuts',
   'ensureGlobalShortcutHost', 'touchGlobalShortcutHeartbeat',
