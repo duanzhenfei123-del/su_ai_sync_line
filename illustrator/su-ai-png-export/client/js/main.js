@@ -168,7 +168,9 @@
                     }
                 }
 
-                if (data.count > 0) {
+                if (data.errors && data.errors.length > 0) {
+                    setStatus("⚠️ 轮廓导出不完整，请查看详情", "error");
+                } else if (data.count > 0) {
                     setStatus("✅ 导出完成: " + data.count + "/" + data.total + " 个", "success");
                     addLog("✅ 成功导出 " + data.count + " 个 PNG", "ok");
                 } else if (data.total === 0) {

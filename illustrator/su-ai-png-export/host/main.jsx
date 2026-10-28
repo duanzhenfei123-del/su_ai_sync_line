@@ -299,7 +299,69 @@ function aP(item,ps,s){
 function aCP(item,ps,s,compoundKey){
     var key=compoundKey||nextCompoundKey();
     var zIndex=itemZIndex(item,0);
+    if (!item.pathItems || !item.pathItems.length) throw new Error("复合路径不包含可导出的子路径");
+    if (compoundBoundsIncomplete(item)) { releaseCompoundPaths(item,ps,s,key,zIndex); return; }
     for(var i=0;i<item.pathItems.length;i++){var d=pd(item.pathItems[i],s);d.id="p_"+padZero(ps.length,3);d.name=item.name||("p"+ps.length);d.compoundKey=key;d.zIndex=zIndex;ps.push(d);}
+}
+
+function compoundBoundsIncomplete(item){
+    if (!item.geometricBounds || !item.pathItems.length) return false;
+    var bounds = null;
+    for (var i=0;i<item.pathItems.length;i++) {
+        var b=item.pathItems[i].geometricBounds;
+        if (!b) return false;
+        if (!bounds) bounds=[b[0],b[1],b[2],b[3]];
+        else { bounds[0]=Math.min(bounds[0],b[0]); bounds[1]=Math.max(bounds[1],b[1]); bounds[2]=Math.max(bounds[2],b[2]); bounds[3]=Math.min(bounds[3],b[3]); }
+    }
+    for (var j=0;j<4;j++) if (Math.abs(bounds[j]-item.geometricBounds[j])>0.1) return true;
+    return false;
+}
+
+function releaseCompoundPaths(item,ps,s,key,zIndex){
+    var original=app.activeDocument, temp=null, start=ps.length;
+    try {
+        temp=app.documents.add(original.documentColorSpace);
+        var copy=item.duplicate(temp,ElementPlacement.PLACEATEND), before=copy.geometricBounds, target=item.geometricBounds;
+        copy.translate(target[0]-before[0],target[1]-before[1]);
+        temp.selection=[copy];
+        app.executeMenuCommand("noCompoundPath");
+        function collect(node){
+            if (node.typename==="PathItem") {
+                var d=pd(node,s); d.id="p_"+padZero(ps.length,3); d.name=item.name||("p"+ps.length); d.compoundKey=key; d.zIndex=zIndex; ps.push(d);
+            } else if (node.typename==="GroupItem") {
+                for(var i=0;i<node.pageItems.length;i++) if(node.pageItems[i].parent===node) collect(node.pageItems[i]);
+            } else throw new Error("释放复合路径后出现不支持的对象："+node.typename);
+        }
+        var selected=temp.selection;
+        for(var i=0;i<selected.length;i++) collect(selected[i]);
+        if (ps.length===start) throw new Error("释放复合路径后没有可导出的路径");
+    } finally {
+        if(temp) temp.close(SaveOptions.DONOTSAVECHANGES);
+        original.activate();
+    }
+}
+
+function expandNestedPlugin(item,paths,groups,s){
+    var original=app.activeDocument, temp=null;
+    try {
+        temp=app.documents.add(original.documentColorSpace);
+        var copy=item.duplicate(temp,ElementPlacement.PLACEATEND), before=copy.geometricBounds, target=item.geometricBounds;
+        copy.translate(target[0]-before[0],target[1]-before[1]);
+        temp.selection=[copy];
+        app.executeMenuCommand("expandStyle");
+        var selected=temp.selection;
+        if (!selected.length) throw new Error("扩展后没有对象");
+        for(var i=0;i<selected.length;i++) {
+            var node=selected[i];
+            if(node.typename==="GroupItem") groups.push(gd(node,s));
+            else if(node.typename==="PathItem") addPathAsGroup(node,paths,groups,s);
+            else if(node.typename==="CompoundPathItem") aCP(node,paths,s);
+            else throw new Error("扩展后仍是不支持的对象："+node.typename);
+        }
+    } finally {
+        if(temp) temp.close(SaveOptions.DONOTSAVECHANGES);
+        original.activate();
+    }
 }
 
 function addPathAsGroup(item, targetPaths, targetGroups, scale){
@@ -352,8 +414,10 @@ function gd(item,s){
         if(t==="GroupItem")g.groups.push(gd(c,s));
         else if(t==="TextFrame"||t==="TextArtItem"){var o=otl(c,s);for(var j=0;j<o.length;j++)g.paths.push(o[j]);}
         else if(t==="PathItem")addPathAsGroup(c,g.paths,g.groups,s);
-        else if(t==="RasterItem"||t==="PlacedItem"){if(!item.clipped&&(!c.stroked||c.strokeWidth<=0))g.paths.push(imgOutline(c));}
+        else if(t==="RasterItem"||t==="PlacedItem"){if(!item.clipped&&(!c.stroked||c.strokeWidth<=0))g.paths.push(imgOutline(c));else throw new Error("组内图片无法转换为轮廓");}
         else if(t==="CompoundPathItem")aCP(c,g.paths,s);
+        else if(t==="PluginItem")expandNestedPlugin(c,g.paths,g.groups,s);
+        else throw new Error("组内存在不支持的对象类型："+t);
     }return g;
 }
 
@@ -364,16 +428,13 @@ function otl(item,s){
     var textZIndex=itemZIndex(item,0);
     try{
         var c=item.duplicate();var r=c.createOutline();var t=(r&&r.typename)?r:c;
-        if(t.typename==="GroupItem"){
-            for(var i=0;i<t.pageItems.length;i++){var ci=t.pageItems[i];
-                if(ci.typename==="PathItem")aP(ci,o,s);
-                else if(ci.typename==="CompoundPathItem")aCP(ci,o,s);
-                else if(ci.typename==="GroupItem"){for(var j=0;j<ci.pageItems.length;j++){var cj=ci.pageItems[j];
-                    if(cj.typename==="PathItem")aP(cj,o,s);
-                    else if(cj.typename==="CompoundPathItem")aCP(cj,o,s);}}
-            }
-        }else if(t.typename==="PathItem")aP(t,o,s);
-        else if(t.typename==="CompoundPathItem")aCP(t,o,s);
+        function collectText(node){
+            if(node.typename==="GroupItem"){for(var i=0;i<node.pageItems.length;i++)collectText(node.pageItems[i]);}
+            else if(node.typename==="PathItem")aP(node,o,s);
+            else if(node.typename==="CompoundPathItem")aCP(node,o,s);
+            else throw new Error("文字轮廓包含不支持的对象："+node.typename);
+        }
+        collectText(t);
         try{t.remove()}catch(e){}
         for(var k=0;k<o.length;k++){
             o[k].isTextOutline=true;
@@ -381,7 +442,7 @@ function otl(item,s){
             o[k].textGroupKey=textGroupId;
             o[k].zIndex=textZIndex;
         }
-    }catch(e){log("otl error:"+e.message)}
+    }catch(e){try{if(t)t.remove();else if(c)c.remove()}catch(cleanupError){} throw e}
     return o;
 }
 

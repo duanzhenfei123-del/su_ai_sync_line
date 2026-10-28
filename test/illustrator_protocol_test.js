@@ -167,6 +167,30 @@ assert.strictEqual(compoundPaths[1].compoundKey, compoundPaths[0].compoundKey);
 assert.strictEqual(compoundPaths[0].zIndex, 8);
 assert.strictEqual(compoundPaths[1].zIndex, 8);
 
+// Illustrator may expose only some subpaths even though compound bounds cover more.
+const partialCompound = { name: 'partial', geometricBounds: [0, 20, 100, 0], pathItems: [square(1, false)] };
+let released = false;
+const originalRelease = context.releaseCompoundPaths;
+context.releaseCompoundPaths = function (item, paths, scale, key, z) { released = true; [square(1, false), square(1, false)].forEach(function (p) { const d = context.pd(p, scale); d.compoundKey = key; d.zIndex = z; paths.push(d); }); };
+const recoveredPaths = [];
+context.aCP(partialCompound, recoveredPaths, 1);
+assert.strictEqual(released, true);
+assert.strictEqual(recoveredPaths.length, 2);
+assert.strictEqual(recoveredPaths[0].compoundKey, recoveredPaths[1].compoundKey);
+context.releaseCompoundPaths = originalRelease;
+const originalExpand = context.expandNestedPlugin;
+let nestedExpanded = false;
+context.expandNestedPlugin = function (item, paths) { nestedExpanded = true; paths.push({ id: 'expanded' }); };
+const nestedResult = context.gd({ pageItems: [{ typename: 'GroupItem', pageItems: [{ typename: 'PluginItem' }] }] }, 1);
+assert.strictEqual(nestedExpanded, true);
+assert.strictEqual(nestedResult.groups[0].paths.length, 1);
+context.expandNestedPlugin = originalExpand;
+assert.throws(function () { context.gd({ pageItems: [{ typename: 'MysteryItem' }] }, 1); }, /MysteryItem/);
+const deepOutline = fakeTextWithCompoundOutline();
+const deepDuplicate = deepOutline.duplicate;
+deepOutline.duplicate = function () { const original = deepDuplicate(); return { createOutline: function () { const inner = original.createOutline(); return { typename: 'GroupItem', pageItems: [{ typename: 'GroupItem', pageItems: [{ typename: 'GroupItem', pageItems: inner.pageItems }] }], remove: function () {} }; } }; };
+assert.strictEqual(context.otl(deepOutline, 1).length, 2);
+
 const outlined = context.otl(fakeTextWithCompoundOutline(), 1);
 assert.strictEqual(outlined.length, 2);
 assert.strictEqual(outlined[0].textGroupKey, outlined[0].textGroupId);
