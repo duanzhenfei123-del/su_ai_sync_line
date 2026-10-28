@@ -37,7 +37,7 @@ function colorToRGB(c){
         return[clampColor(255*(1-c.cyan/100)*remaining),clampColor(255*(1-c.magenta/100)*remaining),clampColor(255*(1-c.yellow/100)*remaining)];
     }
     if(c.typename==="GrayColor"){
-        var gray=clampColor(255*c.gray/100);
+        var gray=clampColor(255*(1-c.gray/100));
         return[gray,gray,gray];
     }
     if(c.typename==="SpotColor"){
