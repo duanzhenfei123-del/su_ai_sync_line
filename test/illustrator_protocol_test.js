@@ -79,6 +79,18 @@ vm.createContext(context);
 const jsxPath = path.join(__dirname, '..', 'illustrator', 'su-ai-png-export', 'host', 'main.jsx');
 vm.runInContext(fs.readFileSync(jsxPath, 'utf8'), context, { filename: jsxPath });
 
+// The Node harness has no Illustrator documents; model the released paths.
+context.releaseCompoundPaths = function (item, paths, scale, key, z) {
+  item.pathItems.forEach(function (p) {
+    const d = context.pd(p, scale);
+    d.id = 'p_' + context.padZero(paths.length, 3);
+    d.name = item.name || ('p' + paths.length);
+    d.compoundKey = key;
+    d.zIndex = z;
+    paths.push(d);
+  });
+};
+
 assert.strictEqual(context.VERSION, '3.7.3');
 [
   'shortcutDataFolder', 'configureGlobalShortcuts',
@@ -151,6 +163,9 @@ upperItem.parent = mixedParent;
 assert.strictEqual(context.itemZIndex(upperItem, 0), 2);
 assert.strictEqual(context.itemZIndex(lowerItem, 0), 1);
 
+const rasterWarnings = [];
+context.gd({ pageItems: [{ typename: 'RasterItem', visibleBounds: [0, 10, 10, 0] }] }, 1, rasterWarnings);
+assert.match(rasterWarnings[0], /只导出了边框/);
 const grouped = context.gd(fakeGroupWithPath(7), 1);
 assert.strictEqual(grouped.zIndex, 7);
 
@@ -177,6 +192,9 @@ context.aCP(partialCompound, recoveredPaths, 1);
 assert.strictEqual(released, true);
 assert.strictEqual(recoveredPaths.length, 2);
 assert.strictEqual(recoveredPaths[0].compoundKey, recoveredPaths[1].compoundKey);
+released = false;
+context.aCP({ name: 'matching bounds', geometricBounds: [0, 10, 10, 0], pathItems: [square(1, false)], duplicate: function () {} }, [], 1);
+assert.strictEqual(released, true, 'matching bounds do not prove all compound contours are exposed');
 context.releaseCompoundPaths = originalRelease;
 const originalExpand = context.expandNestedPlugin;
 let nestedExpanded = false;

@@ -299,22 +299,7 @@ function aP(item,ps,s){
 function aCP(item,ps,s,compoundKey){
     var key=compoundKey||nextCompoundKey();
     var zIndex=itemZIndex(item,0);
-    if (!item.pathItems || !item.pathItems.length) throw new Error("复合路径不包含可导出的子路径");
-    if (compoundBoundsIncomplete(item)) { releaseCompoundPaths(item,ps,s,key,zIndex); return; }
-    for(var i=0;i<item.pathItems.length;i++){var d=pd(item.pathItems[i],s);d.id="p_"+padZero(ps.length,3);d.name=item.name||("p"+ps.length);d.compoundKey=key;d.zIndex=zIndex;ps.push(d);}
-}
-
-function compoundBoundsIncomplete(item){
-    if (!item.geometricBounds || !item.pathItems.length) return false;
-    var bounds = null;
-    for (var i=0;i<item.pathItems.length;i++) {
-        var b=item.pathItems[i].geometricBounds;
-        if (!b) return false;
-        if (!bounds) bounds=[b[0],b[1],b[2],b[3]];
-        else { bounds[0]=Math.min(bounds[0],b[0]); bounds[1]=Math.max(bounds[1],b[1]); bounds[2]=Math.max(bounds[2],b[2]); bounds[3]=Math.min(bounds[3],b[3]); }
-    }
-    for (var j=0;j<4;j++) if (Math.abs(bounds[j]-item.geometricBounds[j])>0.1) return true;
-    return false;
+    releaseCompoundPaths(item,ps,s,key,zIndex);
 }
 
 function releaseCompoundPaths(item,ps,s,key,zIndex){
@@ -341,7 +326,7 @@ function releaseCompoundPaths(item,ps,s,key,zIndex){
     }
 }
 
-function expandNestedPlugin(item,paths,groups,s){
+function expandNestedPlugin(item,paths,groups,s,warnings){
     var original=app.activeDocument, temp=null;
     try {
         temp=app.documents.add(original.documentColorSpace);
@@ -353,7 +338,7 @@ function expandNestedPlugin(item,paths,groups,s){
         if (!selected.length) throw new Error("扩展后没有对象");
         for(var i=0;i<selected.length;i++) {
             var node=selected[i];
-            if(node.typename==="GroupItem") groups.push(gd(node,s));
+            if(node.typename==="GroupItem") groups.push(gd(node,s,warnings));
             else if(node.typename==="PathItem") addPathAsGroup(node,paths,groups,s);
             else if(node.typename==="CompoundPathItem") aCP(node,paths,s);
             else throw new Error("扩展后仍是不支持的对象："+node.typename);
@@ -407,16 +392,16 @@ function addPathAsGroup(item, targetPaths, targetGroups, scale){
     }
 }
 
-function gd(item,s){
+function gd(item,s,warnings){
     log("gd: group " + (item.name||"unnamed"));
     var g={name:item.name||"G",paths:[],groups:[],zIndex:itemZIndex(item,0)};
     for(var i=0;i<item.pageItems.length;i++){var c=item.pageItems[i];var t=c.typename;
-        if(t==="GroupItem")g.groups.push(gd(c,s));
+        if(t==="GroupItem")g.groups.push(gd(c,s,warnings));
         else if(t==="TextFrame"||t==="TextArtItem"){var o=otl(c,s);for(var j=0;j<o.length;j++)g.paths.push(o[j]);}
         else if(t==="PathItem")addPathAsGroup(c,g.paths,g.groups,s);
-        else if(t==="RasterItem"||t==="PlacedItem"){if(!item.clipped&&(!c.stroked||c.strokeWidth<=0))g.paths.push(imgOutline(c));else throw new Error("组内图片无法转换为轮廓");}
+        else if(t==="RasterItem"||t==="PlacedItem"){if(!item.clipped&&(!c.stroked||c.strokeWidth<=0)){g.paths.push(imgOutline(c));if(warnings)warnings.push("组内图片只导出了边框，无法提取图片内容的轮廓");}else throw new Error("组内图片无法转换为轮廓");}
         else if(t==="CompoundPathItem")aCP(c,g.paths,s);
-        else if(t==="PluginItem")expandNestedPlugin(c,g.paths,g.groups,s);
+        else if(t==="PluginItem")expandNestedPlugin(c,g.paths,g.groups,s,warnings);
         else throw new Error("组内存在不支持的对象类型："+t);
     }return g;
 }
@@ -514,13 +499,13 @@ function exportSelectionAsJSON(folderPath) {
             var pathStart = paths.length; var groupStart = groups.length;
             var item = sel[i]; var t = item.typename;
             var diagnostic = { index: i + 1, type: t || "Unknown", name: item.name || "", status: "exported" };
-            if (t === "GroupItem") { groups.push(gd(item, s)); }
+            if (t === "GroupItem") { groups.push(gd(item, s, result.errors)); }
             else if (t === "TextFrame" || t === "TextArtItem") { var tp = otl(item, s); for (var j = 0; j < tp.length; j++) paths.push(tp[j]); }
             else if (t === "PathItem") { addPathAsGroup(item, paths, groups, s); }
-            else if (t === "RasterItem" || t === "PlacedItem") { if (!item.stroked || item.strokeWidth <= 0) paths.push(imgOutline(item)); }
+            else if (t === "RasterItem" || t === "PlacedItem") { if (!item.stroked || item.strokeWidth <= 0) { paths.push(imgOutline(item)); result.errors.push("第 " + diagnostic.index + " 项图片只导出了边框，无法提取图片内容的轮廓"); } else { diagnostic.status = "skipped"; diagnostic.reason = "图片无法转换为轮廓"; result.errors.push("第 " + diagnostic.index + " 项已跳过：" + diagnostic.reason); } }
             else if (t === "CompoundPathItem") {
                 diagnostic.pathCount = item.pathItems ? item.pathItems.length : 0;
-                if (diagnostic.pathCount > 0) {
+                if (diagnostic.pathCount > 0 || item.duplicate) {
                     aCP(item, paths, s);
                 } else {
                     diagnostic.status = "skipped";
@@ -541,7 +526,7 @@ function exportSelectionAsJSON(folderPath) {
                     var expanded = false;
                     for (var ei = 0; ei < temporaryItems.length; ei++) {
                         var expandedItem = temporaryItems[ei], expandedType = expandedItem.typename;
-                        if (expandedType === "GroupItem") { groups.push(gd(expandedItem, s)); expanded = true; }
+                        if (expandedType === "GroupItem") { groups.push(gd(expandedItem, s, result.errors)); expanded = true; }
                         else if (expandedType === "PathItem") { addPathAsGroup(expandedItem, paths, groups, s); expanded = true; }
                         else if (expandedType === "CompoundPathItem") { aCP(expandedItem, paths, s); expanded = true; }
                     }
