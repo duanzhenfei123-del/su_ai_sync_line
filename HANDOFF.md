@@ -6,14 +6,14 @@
 
 - 仓库：`git@github.com:duanzhenfei123-del/su_ai_sync_line.git`
 - 主分支：`main`。
-- 当前配套版本：SketchUp `v3.7.4` + Illustrator `v3.7.4`。
-- 历史标签包括 `v3.6.0` 至 `v3.7.3`；v3.7.4 发布状态以 Git 和 GitHub Releases 为准。
+- 当前配套源码版本为 SketchUp `v3.8` 和 Illustrator `v3.8`。新版本安装器的构建目录和包名使用 `v3.8.0`。
+- 历史标签包括 `v3.6.0` 至 `v3.7.4`。发布状态以 Git 和 GitHub Releases 为准。
 - GitHub Releases 已按版本建立；每个版本只手动附加 SketchUp RBZ 和 AI Windows 安装器 EXE。GitHub 自动生成的 Source code ZIP/TAR 不属于手动上传附件。
 - `v3.7.1` 是 AI 端维护版，SketchUp 端使用兼容的 `v3.7` RBZ。
 
 ## 继续开发约束
 
-- SketchUp `v3.6` 面板布局和用户操作保持不变；后台能力可调整。
+- SketchUp v3.8 面板按导入流程组织。导入参数位于主按钮上方，辅助工具在下方，维护入口位于右上角齿轮。
 - v3.7.4 调整复合路径、图片和蒙版轮廓、灰度颜色转换及白色材质；复杂蒙版与透明像素的限制见 README。
 - AI 端不恢复全局快捷键钩子；Illustrator 原生快捷键必须放行。
 - 默认导出目录只在用户点击导出时创建；未自定义路径时使用桌面的 `ai-export`。

@@ -1,4 +1,4 @@
-require "set" unless defined?(Set)
+require "cgi"
 
 module SU_AI_Sync
   class UI_Manager
@@ -32,16 +32,12 @@ module SU_AI_Sync
 
     private
 
-    def escape_js(text)
-      text.to_s.gsub("\\", "\\\\").gsub("'", "\\'").gsub("\n", "\\n")
-    end
-
     def create_dialog
       dialog = UI::HtmlDialog.new(
         dialog_title: "SU+AI 同步",
         preferences_key: "su_ai_sync_dialog",
         scrollable: true, resizable: true,
-        width: 360, height: 620,
+        width: 374, height: 640,
         left: 200, top: 200,
         min_width: 340, min_height: 560
       )
@@ -50,6 +46,7 @@ module SU_AI_Sync
       dialog.add_action_callback("import") do |_ctx, placement|
         model = Sketchup.active_model
         unless model
+          set_import_status(dialog, "请先打开一个 SketchUp 模型", state: "error", waiting: false)
           UI.messagebox("请先打开一个 SketchUp 模型")
           next
         end
@@ -61,17 +58,21 @@ module SU_AI_Sync
         if @placement == "mouse"
           preview = Importer.new(model).import(*args, preview: true)
           unless preview[:success]
-            set_import_status(dialog, preview[:message])
+            set_import_status(dialog, preview[:message], state: "error", waiting: false)
             next
           end
-          set_import_status(dialog, "移动鼠标预览，左键确认，Esc 取消", waiting: true)
+          set_import_status(dialog, "移动鼠标预览，左键确认，Esc 取消", state: "active", waiting: true)
           model.select_tool(ImportPlacementTool.new(model, preview[:edges]) do |target|
             result = preview[:confirm].call(target) if target
-            set_import_status(dialog, target ? (result[:message] || "导入完成") : "已取消放置")
+            if result
+              set_import_status(dialog, result[:message] || "导入完成", state: result[:success] ? "ready" : "error", waiting: false)
+            else
+              set_import_status(dialog, "已取消放置", waiting: false)
+            end
           end)
         else
           result = Importer.new(model).import(*args)
-          set_import_status(dialog, result[:message] || "导入完成")
+          set_import_status(dialog, result[:message] || "导入完成", state: result[:success] ? "ready" : "error", waiting: false)
         end
       end
 
@@ -89,6 +90,7 @@ module SU_AI_Sync
       end
 
       dialog.add_action_callback("set_debug") do |_ctx, value|
+        @debug_enabled = value
         Logger.debug_mode = value
       end
 
@@ -139,9 +141,7 @@ module SU_AI_Sync
         begin
           moved = ToolActions.drop_selection(Sketchup.active_model)
           if moved > 0
-            dialog.execute_script(
-              "document.getElementById('status').textContent = '已坐落 #{moved} 个对象';"
-            )
+            set_import_status(dialog, "已坐落 #{moved} 个对象", state: "ready")
           end
         rescue StandardError => error
           Logger.error("Drop to surface failed: #{error.message}")
@@ -152,9 +152,7 @@ module SU_AI_Sync
       dialog.add_action_callback("import_texture_aligned") do |_ctx|
         image = ToolActions.import_texture_aligned(Sketchup.active_model)
         if image
-          dialog.execute_script(
-            "document.getElementById('status').textContent = '贴图已按选择对象对齐';"
-          )
+          set_import_status(dialog, "贴图已按选择对象对齐", state: "ready")
         end
       end
 
@@ -163,46 +161,26 @@ module SU_AI_Sync
       end
 
       dialog.add_action_callback("reset_folder") do |_ctx|
-        @import_folder = SU_AI_Sync::EXPORT_DIR
-        SU_AI_Sync.save_import_folder(@import_folder)
-        dialog.execute_script(
-          "document.getElementById('folder_input').value = '#{escape_js("(默认) " + SU_AI_Sync::EXPORT_DIR)}';" +
-          "document.getElementById('status').textContent = '已恢复默认文件夹';"
-        )
+        update_folder(dialog, SU_AI_Sync::EXPORT_DIR)
       end
 
       dialog.add_action_callback("set_folder_path") do |_ctx, path|
         raw = path.to_s.strip
         clean = raw.sub(/^\(默认\)\s*/, "")
         unless File.directory?(clean)
-          dialog.execute_script("document.getElementById('status').textContent = '错误：路径不存在或不是文件夹';")
+          dialog.execute_script("setFolder(#{JSON.generate(@import_folder)});")
+          set_import_status(dialog, "路径不存在或不是文件夹", state: "error")
           next
         end
-        @import_folder = clean
-        SU_AI_Sync.save_import_folder(clean)
-        begin
-          json_count = Dir.entries(clean).count { |e| e.downcase.end_with?(".json") }
-        rescue
-          json_count = 0
-        end
-        safe = escape_js(clean)
-        dialog.execute_script("document.getElementById('folder_input').value = '#{safe}';")
-        status = json_count > 0 ? "已找到 #{json_count} 个 .json 文件" : "警告：未找到 .json 文件"
-        dialog.execute_script("document.getElementById('status').textContent = '#{status}';")
+        update_folder(dialog, clean)
       end
-
-
       dialog
     end
 
-    def set_import_status(dialog, status, waiting: false)
+    def set_import_status(dialog, status, state: "idle", waiting: nil)
       return unless dialog.visible?
 
-      dialog.execute_script(
-        "document.getElementById('status').textContent = #{JSON.generate(status)};" +
-        "document.getElementById('importBtn').disabled = #{waiting};" +
-        "document.getElementById('placement').disabled = #{waiting};"
-      )
+      dialog.execute_script("showStatus(#{JSON.generate(status)}, #{JSON.generate(state)}, #{JSON.generate(waiting)});")
     end
 
     def browse_folder(dialog)
@@ -212,17 +190,29 @@ module SU_AI_Sync
       )
       return unless path
 
-      @import_folder = path
-      SU_AI_Sync.save_import_folder(path)
-      json_count = File.directory?(path) ? Dir.entries(path).count { |entry| entry.downcase.end_with?(".json") } : 0
-      dialog.execute_script("document.getElementById('folder_input').value = '#{escape_js(path)}';")
-      status = json_count > 0 ? "已找到 #{json_count} 个 .json 文件" : "警告：未找到 .json 文件"
-      dialog.execute_script("document.getElementById('status').textContent = '#{status}';")
+      update_folder(dialog, path)
     rescue => e
       Logger.error("Browse folder: #{e.message}")
       UI.messagebox("文件夹选择失败: #{e.message}")
     end
+    def update_folder(dialog, path)
+      @import_folder = path
+      SU_AI_Sync.save_import_folder(path)
+      dialog.execute_script("setFolder(#{JSON.generate(path)});")
+      status, state = folder_status
+      set_import_status(dialog, status, state: state)
+    end
 
+    def folder_status
+      return ["未找到同步数据", "idle"] unless File.directory?(@import_folder)
+
+      found = Dir.children(@import_folder).any? do |entry|
+        (entry == "latest_sync.json" || entry.match?(/^sync_.*\.json$/i)) && File.file?(File.join(@import_folder, entry))
+      end
+      found ? ["已找到同步数据", "ready"] : ["未找到同步数据", "idle"]
+    rescue SystemCallError
+      ["无法读取导入文件夹", "error"]
+    end
 
     def html_content
       scale_selected_1 = @scale == 1.0 ? " selected" : ""
@@ -233,147 +223,375 @@ module SU_AI_Sync
         "<option value=\"#{n}\"#{sel}>#{n}</option>"
       }.join("\n          ")
 
-      face_btn_class = @create_faces ? "btn-on" : "btn-off"
-      face_btn_text = ""
-      extrude_btn_class = @extrude_enabled ? "btn-on" : "btn-off"
-      extrude_btn_text = ""
-      extrude_row_display = @extrude_enabled ? "flex" : "none"
-      z_stack_btn_class = @z_stack_enabled ? "btn-on" : "btn-off"
-      z_stack_btn_text = @z_stack_enabled ? "按图层叠放：开" : "按图层叠放：关"
-      layer_gap_display = @z_stack_enabled ? "flex" : "none"
-
-      ext_placeholder = @extrude_enabled ? "" : " style=\"display:none\""
-
-      folder_display = if @import_folder == SU_AI_Sync::EXPORT_DIR
-        "(默认) " + SU_AI_Sync::EXPORT_DIR
-      else
-        escape_js(@import_folder)
-      end
+      folder_display = CGI.escapeHTML(@import_folder)
+      status_text, status_state = folder_status
 
       <<~HTML
         <!DOCTYPE html>
-        <html><head><meta charset="UTF-8">
-        <style>
-        body{font-family:sans-serif;margin:15px;background:#f5f5f5}
-        .container{background:white;padding:20px;border-radius:8px}
-        h2{margin:0 0 20px 0;color:#333;font-size:18px}
-        .btn{width:100%;padding:12px;margin:8px 0;border:none;border-radius:4px;cursor:pointer;font-size:14px}
-        .btn-primary{background:#2196F3;color:white}
-        .btn-on{background:#2196F3;color:white}
-        .btn-off{background:#BDBDBD;color:white}
-        .btn-secondary{background:#607D8B;color:white}
-        .btn-small{background:#9E9E9E;color:white;padding:8px}
-        .toggle-off{background:#BDBDBD;color:white}
-        .btn-success{background:#4CAF50;color:white}
-        .divider{height:1px;background:#e0e0e0;margin:15px 0}
-        .status{padding:10px;background:#E3F2FD;border-radius:4px;font-size:13px}
-        .row{display:flex;align-items:center;margin:10px 0;gap:8px}
-        .row label{font-size:13px;color:#555;white-space:nowrap}
-        .row select{flex:1;padding:6px;border:1px solid #ccc;border-radius:4px;font-size:13px}
-        .info{font-size:12px;color:#666;line-height:1.6}
-        .folder_row{display:flex;align-items:center;margin:8px 0;gap:6px;flex-wrap:wrap}
-        .folder_path{font-size:11px;color:#333;background:#f0f0f0;padding:6px 8px;border-radius:3px;word-break:break-all;flex:1;min-width:0}
-        .folder_input{font-size:11px;color:#333;background:#fff;padding:6px 8px;border:1px solid #bbb;border-radius:3px;flex:1;min-width:0;font-family:monospace}
-        .folder_input:focus{border-color:#2196F3;outline:none}
-        .folder_btn{font-size:12px;padding:5px 10px;border:none;border-radius:3px;cursor:pointer;white-space:nowrap}
-        .folder_btn_browse{background:#4CAF50;color:white}
-        .folder_btn_reset{background:#f44336;color:white}
-        .btn_row{display:flex;gap:8px;margin:8px 0}
-        .bottom_bar{display:flex;align-items:center;gap:6px;padding:6px 0;border-top:1px solid #e0e0e0;margin-top:6px}
-        </style></head><body><div class="container">
-        <h2>SU+AI 同步 v3.7.4</h2>
-        <div style="text-align:center;font-size:12px;color:#999;margin:-10px 0 8px 0">作者：段土土</div>
-        <button class="btn btn-primary" id="importBtn" onclick="doImport()">导入同步数据</button>
-        <div class="row"><label for="placement">放置方式:</label>
-        <select id="placement">
-          <option value="origin">左下角归零</option>
-          <option value="mouse"#{@placement == "mouse" ? " selected" : ""}>跟随鼠标放置</option>
-        </select></div>
-        <div class="row"><label>导入比例:</label>
-        <select onchange="sketchup.set_scale(this.value)">
-          <option value="1.0"#{scale_selected_1}>1:1 (等大)</option>
-          <option value="10.0"#{scale_selected_10}>1:10 (放大10倍)</option>
-        </select></div>
-        <div class="row"><label>曲线精度:</label>
-        <select onchange="sketchup.set_segs(this.value)">
-          #{segs_options}
-        </select></div>
-        <div class="btn_row">
-          <button class="btn #{face_btn_class}" id="faceBtn" onclick="toggleFace()" style="flex:1">导入封面</button>
-          <button class="btn #{extrude_btn_class}" id="extrudeBtn" onclick="toggleExtrude()" style="flex:1">拉成体块</button>
-        </div>
-        <div class="row" id="extrudeRow" style="display:#{extrude_row_display}"><label>挤出厚度(mm):</label><input type="number" id="extrudeInput" value="#{@extrude_thickness}" min="0.1" step="1" style="width:80px;flex:none;padding:6px;border:1px solid #ccc;border-radius:4px;font-size:13px" onchange="sketchup.set_extrude(this.value)"></div>
-        <div class="status" id="status">等待导入...</div>
-        <div class="divider"></div>
-        <div style="font-size:13px;color:#333;font-weight:bold;margin:8px 0 4px 0">图层与辅助工具</div>
-        <button class="btn #{z_stack_btn_class}" id="zStackBtn" onclick="toggleZStack()">#{z_stack_btn_text}</button>
-        <div class="row" id="layerGapRow" style="display:#{layer_gap_display}">
-          <label>层间距(mm):</label>
-          <input type="number" id="layerGapInput" value="#{@layer_gap}" min="0.1" step="1" style="width:80px;flex:none;padding:6px;border:1px solid #ccc;border-radius:4px;font-size:13px" onchange="sketchup.set_layer_gap(this.value)">
-        </div>
-        <div class="btn_row">
-          <button class="btn btn-secondary" onclick="sketchup.drop_to_surface()" style="flex:1">坐落物体表面</button>
-          <button class="btn btn-secondary" onclick="sketchup.import_texture_aligned()" style="flex:1">导入贴图对齐</button>
-        </div>
-        <div class="divider"></div>
-        <div style="font-size:13px;color:#333;font-weight:bold;margin:8px 0 4px 0">导入文件夹</div>
-        <div class="folder_row">
-          <input type="text" class="folder_input" id="folder_input" value="#{folder_display}" placeholder="粘贴路径后按 Enter 确认..." onchange="onFolderChange(this.value)" onkeydown="if(event.key==='Enter')onFolderChange(this.value)">
-        </div>
-        <div class="folder_row">
-          <button class="folder_btn folder_btn_browse" onclick="sketchup.browse_folder()">浏览...</button>
-          <button class="folder_btn folder_btn_reset" onclick="sketchup.reset_folder()">恢复默认</button>
-        </div>
-        <div class="divider"></div>
-        <div class="bottom_bar">
-          <button class="btn btn-small" onclick="sketchup.reload()" style="flex:1;font-size:12px">热重载插件</button>
-          <button class="btn btn-small" onclick="sketchup.open_log()" style="flex:1;font-size:12px">打开日志</button>
-          <div class="cb" style="display:flex;align-items:center;gap:4px;flex:1;justify-content:center"><input type="checkbox" id="debugChk" onchange="sketchup.set_debug(this.checked)"><label for="debugChk" style="font-size:12px;color:#555;cursor:pointer">调试模式</label></div>
-        </div>
-        <div class="divider"></div>
-        <div class="info"><b>使用方法：</b><br>1. 在 AI 中选择图形后导出到文件夹<br>2. 选择比例/细分/封面<br>3. 确认文件夹路径正确<br>4. 点击导入</div>
-        </div><script>
-        function doImport(){document.getElementById('status').textContent='正在导入...';sketchup.import(document.getElementById('placement').value);}
-        function toggleFace(){
-          var btn = document.getElementById('faceBtn');
-          var isOn = btn.classList.contains('btn-on') ? false : true;
-          sketchup.set_face(isOn);
-          btn.textContent = '导入封面';
-          btn.className = 'btn ' + (isOn ? 'btn-on' : 'btn-off');
-          if(!isOn){
-            var ebtn = document.getElementById('extrudeBtn');
-            sketchup.set_extrude_enabled(false);
-            ebtn.textContent = '拉成体块';
-            ebtn.className = 'btn btn-off';
-            document.getElementById('extrudeRow').style.display = 'none';
-          }
-        }
-        function toggleExtrude(){
-          var btn = document.getElementById('extrudeBtn');
-          var isOn = btn.classList.contains('btn-on') ? false : true;
-          if(isOn){
-            var fbtn = document.getElementById('faceBtn');
-            sketchup.set_face(true);
-            fbtn.textContent = '导入封面';
-            fbtn.className = 'btn btn-on';
-          }
-          sketchup.set_extrude_enabled(isOn);
-          btn.textContent = '拉成体块';
-          btn.className = 'btn ' + (isOn ? 'btn-on' : 'btn-off');
-          document.getElementById('extrudeRow').style.display = isOn ? 'flex' : 'none';
-          if(isOn)sketchup.set_extrude(document.getElementById('extrudeInput').value);
-        }
-        function toggleZStack(){
-          var button = document.getElementById('zStackBtn');
-          var enabled = !button.classList.contains('btn-on');
-          button.className = 'btn ' + (enabled ? 'btn-on' : 'btn-off');
-          button.textContent = enabled ? '按图层叠放：开' : '按图层叠放：关';
-          document.getElementById('layerGapRow').style.display = enabled ? 'flex' : 'none';
-          sketchup.set_z_stack(enabled);
-          if(enabled)sketchup.set_layer_gap(document.getElementById('layerGapInput').value);
-        }
-        function onFolderChange(val){if(val.trim())sketchup.set_folder_path(val);}
-        </script></body></html>
+        <html lang="zh-CN">
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <style>
+            :root {
+              color-scheme: light;
+              --ink: #182233;
+              --muted: #596579;
+              --border: #cbd3df;
+              --blue: #2563eb;
+              --accent: #1d4ed8;
+            }
+            * { box-sizing: border-box; }
+            body {
+              margin: 8px;
+              background: #eef2f7;
+              color: var(--ink);
+              font: 13px/1.5 "Segoe UI", "Microsoft YaHei UI", sans-serif;
+            }
+            [hidden] { display: none !important; }
+            h1, h2, p, fieldset { margin: 0; }
+            h1 { font-size: 20px; font-weight: 650; letter-spacing: -.35px; }
+            h2, legend, .field-label { font-size: 13px; font-weight: 600; }
+            fieldset { min-width: 0; padding: 0; border: 0; }
+            legend { padding: 0; }
+            button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible,
+            .segments input:focus-visible + span {
+              outline: 2px solid var(--blue);
+              outline-offset: 2px;
+            }
+            button, input, select { font: inherit; color: inherit; }
+            button, summary, select { cursor: pointer; }
+            button:disabled { cursor: default; }
+            button, select, input[type=text], input[type=number] {
+              min-height: 36px;
+              border: 1px solid var(--border);
+              border-radius: 6px;
+              background: #fff;
+            }
+            button { padding: 6px 11px; font-weight: 600; }
+            button:not(:disabled):hover { border-color: #8796ad; background: #f3f6fb; }
+            select, input[type=text], input[type=number] { padding: 5px 8px; }
+            .panel {
+              padding: 12px 14px 14px;
+              background: #fff;
+              border: 1px solid #dae1eb;
+              border-radius: 9px;
+            }
+            .panel-header {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              padding-bottom: 9px;
+              border-bottom: 1px solid #e2e7ef;
+            }
+            .import-options { display: grid; gap: 12px; margin-top: 12px; }
+            .field-label { display: block; margin-bottom: 5px; }
+            .row { display: flex; align-items: center; gap: 8px; }
+            .columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+            .columns select { width: 100%; }
+            .folder-field { position: relative; flex: 1; min-width: 0; }
+            #folder_input { width: 100%; padding-left: 30px; }
+            .folder-icon {
+              position: absolute;
+              left: 9px;
+              top: 14px;
+              width: 14px;
+              height: 10px;
+              border: 1.4px solid var(--muted);
+              border-radius: 2px;
+              pointer-events: none;
+            }
+            .folder-icon::before {
+              content: "";
+              position: absolute;
+              left: -1px;
+              top: -4px;
+              width: 7px;
+              height: 4px;
+              border: 1.4px solid var(--muted);
+              border-bottom: 0;
+              border-radius: 2px 2px 0 0;
+              background: #fff;
+            }
+            .segments {
+              display: grid;
+              grid-template-columns: repeat(2, minmax(0, 1fr));
+              overflow: hidden;
+              border: 1px solid var(--border);
+              border-radius: 6px;
+            }
+            .segments label { position: relative; text-align: center; }
+            .segments label + label { border-left: 1px solid var(--border); }
+            .segments input { position: absolute; opacity: 0; top: 0; left: 0; margin: 0; width: 100%; height: 100%; cursor: pointer; }
+            .segments span { display: block; padding: 8px 5px; font-weight: 600; }
+            .segments input:checked + span { background: #e8f0ff; color: var(--accent); }
+            .segments input:focus-visible + span { outline-offset: -2px; }
+            .segments input:disabled { cursor: default; }
+            .hint { margin-top: 4px; color: var(--muted); font-size: 11.5px; }
+            .toggle-label { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-height: 27px; }
+            .switch {
+              -webkit-appearance: none;
+              appearance: none;
+              flex: 0 0 auto;
+              position: relative;
+              width: 32px;
+              height: 18px;
+              margin: 0;
+              border: 1px solid #8c98ac;
+              border-radius: 999px;
+              background: #8c98ac;
+              cursor: pointer;
+            }
+            .switch::after {
+              content: "";
+              position: absolute;
+              top: 2px;
+              left: 2px;
+              width: 12px;
+              height: 12px;
+              border-radius: 50%;
+              background: #fff;
+            }
+            .switch:checked { border-color: var(--blue); background: var(--blue); }
+            .switch:checked::after { left: 16px; }
+            .number-row { justify-content: space-between; }
+            .number-row input { width: 78px; }
+            .advanced { border: 1px solid var(--border); border-radius: 6px; background: #f8faff; }
+            summary { list-style: none; }
+            summary::-webkit-details-marker { display: none; }
+            .advanced summary { position: relative; padding: 7px 10px; font-weight: 600; }
+            .advanced summary::after {
+              content: "";
+              position: absolute;
+              right: 12px;
+              top: 13px;
+              width: 6px;
+              height: 6px;
+              border: solid var(--muted);
+              border-width: 0 1.5px 1.5px 0;
+              transform: rotate(45deg);
+            }
+            .advanced[open] summary::after { top: 16px; transform: rotate(225deg); }
+            .advanced-body { padding: 4px 10px 8px; border-top: 1px solid #e2e7ef; }
+            .advanced-body .number-row { margin-top: 5px; }
+            #importBtn {
+              width: 100%;
+              min-height: 40px;
+              border-color: var(--blue);
+              background: var(--blue);
+              color: #fff;
+              font-size: 14px;
+            }
+            #importBtn:hover:not(:disabled) { border-color: var(--accent); background: var(--accent); }
+            #importBtn:disabled { border-color: #a8b9d4; background: #a8b9d4; color: #17263c; }
+            .status-line { display: flex; align-items: baseline; gap: 7px; margin-top: 7px; color: var(--muted); font-size: 12px; }
+            .status-line::before { content: ""; flex: 0 0 7px; height: 7px; border-radius: 50%; background: #8291a7; }
+            .status-line[data-state="ready"]::before { background: #138044; }
+            .status-line[data-state="active"]::before { background: var(--blue); }
+            .status-line[data-state="error"] { color: #a5272b; }
+            .status-line[data-state="error"]::before { background: #bd383c; }
+            #status { overflow-wrap: anywhere; }
+            .tools { margin-top: 12px; padding-top: 9px; border-top: 1px solid #e2e7ef; }
+            .tools h2 { margin-bottom: 6px; }
+            .tools button { width: 100%; }
+            .settings { position: relative; }
+            .settings summary {
+              display: grid;
+              place-items: center;
+              width: 32px;
+              height: 32px;
+              border: 1px solid transparent;
+              border-radius: 6px;
+              color: #425169;
+              font: 21px/1 "Segoe UI Symbol", sans-serif;
+            }
+            .settings summary:hover, .settings[open] summary { border-color: var(--border); background: #f3f6fb; }
+            .settings-menu {
+              position: absolute;
+              top: 38px;
+              right: 0;
+              z-index: 1;
+              display: grid;
+              gap: 5px;
+              width: 166px;
+              padding: 6px;
+              border: 1px solid var(--border);
+              border-radius: 7px;
+              background: #fff;
+              box-shadow: 0 5px 16px #1c304127;
+            }
+            .settings-menu button { min-height: 30px; text-align: left; }
+            .settings-menu label { padding: 0 5px; }
+            .settings-menu small { padding: 5px; border-top: 1px solid #e2e7ef; color: var(--muted); }
+          </style>
+        </head>
+        <body>
+          <main class="panel">
+            <header class="panel-header">
+              <h1>SU+AI 同步</h1>
+              <details class="settings">
+                <summary aria-label="插件设置" title="插件设置">&#9881;</summary>
+                <div class="settings-menu">
+                  <button type="button" onclick="sketchup.reload()">热重载插件</button>
+                  <button type="button" onclick="sketchup.open_log()">打开日志</button>
+                  <button type="button" onclick="sketchup.reset_folder()">恢复默认文件夹</button>
+                  <label class="toggle-label" for="debugChk">调试模式
+                    <input class="switch" type="checkbox" id="debugChk" #{@debug_enabled ? 'checked' : ''} onchange="sketchup.set_debug(this.checked)">
+                  </label>
+                  <small>版本 #{VERSION}<br>作者：段土土</small>
+                </div>
+              </details>
+            </header>
+
+            <div class="import-options">
+              <div>
+                <label class="field-label" for="folder_input">导入文件夹</label>
+                <div class="row">
+                  <div class="folder-field">
+                    <span class="folder-icon" aria-hidden="true"></span>
+                    <input type="text" id="folder_input" value="#{folder_display}" title="#{folder_display}" onchange="onFolderChange(this.value)" onkeydown="if(event.key==='Enter')this.blur()">
+                  </div>
+                  <button type="button" onclick="sketchup.browse_folder()">浏览</button>
+                </div>
+              </div>
+
+              <fieldset id="placement" aria-describedby="placementHint">
+                <legend class="field-label">放置方式</legend>
+                <div class="segments" onchange="updatePlacementHint()">
+                  <label><input type="radio" name="placement" value="origin" #{@placement == 'mouse' ? '' : 'checked'}><span>自动定位</span></label>
+                  <label><input type="radio" name="placement" value="mouse" #{@placement == 'mouse' ? 'checked' : ''}><span>跟随鼠标</span></label>
+                </div>
+                <p class="hint" id="placementHint">#{@placement == 'mouse' ? '移动鼠标预览，左键确认，Esc 取消' : '画板内按画板定位，画板外按对象归零'}</p>
+              </fieldset>
+
+              <div class="columns">
+                <div>
+                  <label class="field-label" for="scale">导入比例</label>
+                  <select id="scale" onchange="sketchup.set_scale(this.value)">
+                    <option value="1.0"#{scale_selected_1}>1:1 等大</option>
+                    <option value="10.0"#{scale_selected_10}>1:10（放大 10 倍）</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="field-label" for="segments">曲线精度</label>
+                  <select id="segments" onchange="sketchup.set_segs(this.value)">
+                    #{segs_options}
+                  </select>
+                </div>
+              </div>
+
+              <div class="columns">
+                <label class="toggle-label" for="faceToggle">导入封面
+                  <input class="switch" id="faceToggle" type="checkbox" #{@create_faces ? 'checked' : ''} onchange="toggleFace(this.checked)">
+                </label>
+                <label class="toggle-label" for="extrudeToggle">拉成体块
+                  <input class="switch" id="extrudeToggle" type="checkbox" #{@extrude_enabled ? 'checked' : ''} onchange="toggleExtrude(this.checked)">
+                </label>
+              </div>
+              <div id="extrudeRow" class="row number-row" #{@extrude_enabled ? '' : 'hidden'}>
+                <label for="extrudeInput">挤出厚度（mm）</label>
+                <input type="number" id="extrudeInput" value="#{@extrude_thickness}" min="0.1" step="1" onchange="sketchup.set_extrude(this.value)">
+              </div>
+
+              <details id="advancedOptions" class="advanced">
+                <summary>高级选项</summary>
+                <div class="advanced-body">
+                  <label class="toggle-label" for="zStackToggle">按图层叠放
+                    <input class="switch" id="zStackToggle" type="checkbox" #{@z_stack_enabled ? 'checked' : ''} onchange="toggleZStack(this.checked)">
+                  </label>
+                  <div id="layerGapRow" class="row number-row" #{@z_stack_enabled ? '' : 'hidden'}>
+                    <label for="layerGapInput">层间距（mm）</label>
+                    <input type="number" id="layerGapInput" value="#{@layer_gap}" min="0.1" step="1" onchange="sketchup.set_layer_gap(this.value)">
+                  </div>
+                </div>
+              </details>
+
+              <div>
+                <button type="button" id="importBtn" onclick="doImport()">导入同步数据</button>
+                <div class="status-line" data-state="#{status_state}"><span id="status" role="status">#{status_text}</span></div>
+              </div>
+            </div>
+
+            <section class="tools" aria-labelledby="toolsHeading">
+              <h2 id="toolsHeading">辅助工具</h2>
+              <div class="columns">
+                <button type="button" onclick="sketchup.drop_to_surface()">坐落物体表面</button>
+                <button type="button" onclick="sketchup.import_texture_aligned()">导入贴图对齐</button>
+              </div>
+            </section>
+          </main>
+          <script>
+            function selectedPlacement() {
+              return document.querySelector('input[name="placement"]:checked').value;
+            }
+
+            function updatePlacementHint() {
+              document.getElementById('placementHint').textContent = selectedPlacement() === 'mouse'
+                ? '移动鼠标预览，左键确认，Esc 取消'
+                : '画板内按画板定位，画板外按对象归零';
+            }
+
+            function showStatus(message, state, waiting = null) {
+              const status = document.getElementById('status');
+              status.textContent = message;
+              status.parentElement.dataset.state = state;
+              if (waiting !== null) {
+                document.getElementById('importBtn').disabled = waiting;
+                document.getElementById('placement').disabled = waiting;
+              }
+            }
+
+            function doImport() {
+              showStatus('正在导入…', 'active', true);
+              sketchup.import(selectedPlacement());
+            }
+
+            function toggleFace(enabled) {
+              sketchup.set_face(enabled);
+              if (!enabled) {
+                document.getElementById('extrudeToggle').checked = false;
+                document.getElementById('extrudeRow').hidden = true;
+              }
+            }
+
+            function toggleExtrude(enabled) {
+              document.getElementById('extrudeRow').hidden = !enabled;
+              if (enabled) {
+                document.getElementById('faceToggle').checked = true;
+                sketchup.set_extrude(document.getElementById('extrudeInput').value);
+              }
+              sketchup.set_extrude_enabled(enabled);
+            }
+
+            function toggleZStack(enabled) {
+              document.getElementById('layerGapRow').hidden = !enabled;
+              if (enabled) sketchup.set_layer_gap(document.getElementById('layerGapInput').value);
+              sketchup.set_z_stack(enabled);
+            }
+
+            function setFolder(path) {
+              const input = document.getElementById('folder_input');
+              input.value = path;
+              input.title = path;
+            }
+
+            function onFolderChange(path) {
+              sketchup.set_folder_path(path);
+            }
+
+            const settings = document.querySelector('.settings');
+            document.addEventListener('click', event => {
+              if (settings.open && !settings.contains(event.target)) settings.open = false;
+            });
+            document.addEventListener('keydown', event => {
+              if (event.key === 'Escape' && settings.open) {
+                settings.open = false;
+                settings.querySelector('summary').focus();
+              }
+            });
+          </script>
+        </body>
+        </html>
       HTML
     end
   end

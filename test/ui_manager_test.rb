@@ -5,14 +5,18 @@ include TestSupport
 manager = SU_AI_Sync::UI_Manager.new
 html = manager.send(:html_content)
 
-assert_equal('3.7.4', SU_AI_Sync::VERSION, 'plugin version')
-assert_equal(true, html.include?('SU+AI 同步 v3.7.4'), 'panel shows release version')
-assert_equal(true, html.include?('id="zStackBtn"'), 'panel contains layer stack toggle')
+assert_equal('3.8', SU_AI_Sync::VERSION, 'plugin version')
+assert_equal(true, html.include?('版本 3.8'), 'panel shows release version in settings')
+assert_equal(true, html.include?('id="zStackToggle"'), 'panel contains layer stack toggle')
 assert_equal(true, html.include?('id="layerGapInput"'), 'panel contains layer gap input')
 assert_equal(true, html.include?('sketchup.drop_to_surface()'), 'panel contains surface drop action')
 assert_equal(true, html.include?('sketchup.import_texture_aligned()'), 'panel contains aligned texture action')
 assert_equal(true, html.include?('作者：段土土'), 'panel preserves author label')
-assert_equal(['origin', 'mouse'], html[/<select id="placement">.*?<\/select>/m].scan(/<option value="([^"]+)"/).flatten, 'panel offers automatic origin and mouse placement')
+assert_equal(['origin', 'mouse'], html.scan(/name="placement" value="([^"]+)"/).flatten, 'panel offers automatic origin and mouse placement')
+controls = %w[folder_input placement importBtn status]
+assert_equal(true, controls.map { |id| html.index("id=\"#{id}\"") }.each_cons(2).all? { |first, second| first < second }, 'panel follows folder, placement, import, status order')
+assert_equal(true, html[/<details id="advancedOptions"[^>]*>.*?<\/details>/m].to_s.include?('id="zStackToggle"'), 'layer stack is inside advanced options')
+assert_equal(true, html[/<details class="settings"[^>]*>.*?<\/details>/m].to_s.include?('id="debugChk"'), 'maintenance options are grouped in settings')
 
 dialog = nil
 begin
