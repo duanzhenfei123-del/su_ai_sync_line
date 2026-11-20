@@ -88,3 +88,72 @@ begin
 ensure
   remove_test_groups(model, stacked_solid_groups)
 end
+
+require 'tmpdir'
+Dir.mktmpdir('suai-placement') do |folder|
+  groups = []
+  begin
+    data = JSON.parse(File.read(File.join(negative_origin_fixture_dir, 'latest_sync.json')))
+    data['document'] = { 'artboardOriginMM' => [-50.0, -60.0] }
+    path = File.join(folder, 'latest_sync.json')
+    [0, 80].each do |shift|
+      data['paths'][0]['verticesMM'] = [[-20 + shift, -30], [20 + shift, -30], [20 + shift, 10], [-20 + shift, 10]]
+      File.write(path, JSON.generate(data))
+      before = model.entities.to_a
+      result = SU_AI_Sync::Importer.new(model).import(2.0, true, 4, folder)
+      groups.concat(imported_groups_since(model, before))
+      assert_equal(true, result[:success], 'relative import succeeds')
+    end
+    minima = groups.map { |group| [group.bounds.min.x.to_mm.round(5), group.bounds.min.y.to_mm.round(5)] }
+    assert_equal([[60.0, 60.0], [220.0, 60.0]], minima, 'batches share the artboard origin and scale')
+
+    data['document']['artboardOriginMM'] = nil
+    second = JSON.parse(JSON.generate(data['paths'].first))
+    second['id'] = 'outside_second'
+    second['verticesMM'].each { |point| point[0] += 80 }
+    data['paths'] << second
+    File.write(path, JSON.generate(data))
+    before = model.entities.to_a
+    result = SU_AI_Sync::Importer.new(model).import(2.0, true, 4, folder)
+    groups.concat(imported_groups_since(model, before))
+    assert_equal(true, result[:success], 'off-artboard import succeeds')
+    bounds = groups.last.bounds
+    assert_equal([0, 0], [bounds.min.x.to_mm.round, bounds.min.y.to_mm.round], 'off-artboard batch aligns its bottom-left')
+    assert_equal(240, bounds.width.to_mm.round, 'off-artboard batch keeps the spacing between objects')
+
+    data['document']['artboardOriginMM'] = [-50.0, -60.0]
+    File.write(path, JSON.generate(data))
+    target = Geom::Point3d.new(110.mm, 220.mm, 30.mm)
+    before = model.entities.to_a
+    result = SU_AI_Sync::Importer.new(model).import(1.0, true, 4, folder, target: Geom::Transformation.translation(target))
+    groups.concat(imported_groups_since(model, before))
+    assert_equal(true, result[:success], 'point placement succeeds')
+    assert_equal([110, 220, 30], groups.last.bounds.min.to_a.map { |axis| axis.to_mm.round }, 'group bottom-left uses picked point')
+
+    wall = Geom::Transformation.axes(target, Y_AXIS, Z_AXIS, X_AXIS)
+    before = model.entities.to_a
+    result = SU_AI_Sync::Importer.new(model).import(1.0, true, 4, folder, target: wall)
+    groups.concat(imported_groups_since(model, before))
+    assert_equal(true, result[:success], 'surface placement succeeds')
+    bounds = groups.last.bounds
+    assert_equal([110, 220, 30], bounds.min.to_a.map { |axis| axis.to_mm.round }, 'wall placement anchors the original bottom-left')
+    assert_equal([0, 120, 40], [bounds.width, bounds.height, bounds.depth].map { |axis| axis.to_mm.round }, 'import geometry lies in the wall plane')
+
+    before = model.entities.to_a
+    preview = SU_AI_Sync::Importer.new(model).import(1.0, true, 4, folder, preview: true)
+    assert_equal(true, preview[:success], 'mouse preview is prepared before placement')
+    assert_equal(before, model.entities.to_a, 'preparing the preview leaves no geometry')
+    preview_bounds = Geom::BoundingBox.new
+    preview[:edges].each { |point| preview_bounds.add(point.transform(wall)) }
+    assert_equal(bounds.min.to_a, preview_bounds.min.to_a, 'preview starts at the final anchor')
+    assert_equal(bounds.max.to_a, preview_bounds.max.to_a, 'preview has the final dimensions')
+    data['paths'].pop
+    File.write(path, JSON.generate(data))
+    result = preview[:confirm].call(wall)
+    groups.concat(imported_groups_since(model, before))
+    assert_equal(2, result[:paths], 'confirmation uses the previewed export even if JSON changes')
+    assert_equal(bounds.max.to_a, groups.last.bounds.max.to_a, 'confirmed geometry matches the preview')
+  ensure
+    remove_test_groups(model, groups)
+  end
+end

@@ -121,3 +121,75 @@ ensure
   model.abort_operation if image_operation_started
   erase_tool_action_fixtures(model, [target, image])
 end
+
+placement_events = []
+view = model.active_view
+original_camera = view.camera
+target_group = nil
+begin
+  tool = SU_AI_Sync::ImportPlacementTool.new(model) { |point| placement_events << point }
+  model.select_tool(tool)
+  tool.onCancel(0, view)
+  assert_equal([nil], placement_events, 'cancelling mouse placement reports one cancellation')
+
+  placement_events.clear
+  tool = SU_AI_Sync::ImportPlacementTool.new(model) { |point| placement_events << point }
+  model.select_tool(tool)
+  screen = view.screen_coords(ORIGIN)
+  tool.onMouseMove(0, screen.x, screen.y, view)
+  assert_equal([], placement_events, 'moving the cursor does not import')
+  tool.onLButtonDown(0, screen.x, screen.y, view)
+  assert_equal(1, placement_events.length, 'clicking confirms placement once')
+  assert_equal(true, placement_events.first.is_a?(Geom::Transformation), 'free placement uses a model-space transform')
+
+  model.start_operation('surface placement fixture', true)
+  target_group = model.entities.add_group
+  face = target_group.entities.add_face([0, 0, 0], [20, 0, 0], [20, 10, 6], [0, 10, 6])
+  rotation = Geom::Transformation.rotation(ORIGIN, Z_AXIS, 30.degrees)
+  target_group.transform!(Geom::Transformation.translation([30, 20, 10]) * rotation * Geom::Transformation.scaling(1, 2, 3))
+  model.commit_operation
+  transform = target_group.transformation
+  center = Geom::Point3d.new(10, 5, 3).transform(transform)
+  normal = Geom::Vector3d.new(20, 0, 0).transform(transform).cross(Geom::Vector3d.new(0, 10, 6).transform(transform)).normalize
+  camera = Sketchup::Camera.new(center.offset(normal, 70), center, Y_AXIS, false)
+  camera.height = 60
+  view.camera = camera
+  view.refresh
+  screen = view.screen_coords(center)
+  hit = model.raytest(view.pickray(screen.x, screen.y), true)
+  assert_equal(face, hit&.last&.last, 'test cursor targets the sloping face')
+
+  placement_events.clear
+  tool = SU_AI_Sync::ImportPlacementTool.new(model) { |target| placement_events << target }
+  model.select_tool(tool)
+  tool.onMouseMove(0, screen.x, screen.y, view)
+  assert_equal([], placement_events, 'hovering a face does not import')
+  tool.onLButtonDown(0, screen.x, screen.y, view)
+  placement = placement_events.fetch(0)
+  assert_equal(hit.first.to_a, placement.origin.to_a, 'placement origin is the point on the target face')
+  assert_equal(true, placement.zaxis.samedirection?(normal), 'placement follows the transformed face normal')
+  assert_equal(true, placement.yaxis.z > 0, 'artwork stays upright on a sloping face')
+
+  vertex = Geom::Point3d.new(0, 0, 0).transform(transform)
+  midpoint = Geom::Point3d.new(10, 0, 0).transform(transform)
+  [[vertex, '顶点'], [midpoint, '中点']].each do |position, label|
+    screen = view.screen_coords(position)
+    placement_events.clear
+    tool = SU_AI_Sync::ImportPlacementTool.new(model, [ORIGIN, Geom::Point3d.new(2, 0, 0)]) do |target|
+      placement_events << target
+    end
+    model.select_tool(tool)
+    tool.onMouseMove(0, screen.x + 2, screen.y, view)
+    hovered = tool.instance_variable_get(:@target)
+    assert_equal(label, tool.instance_variable_get(:@snap_label), "hover identifies the #{label} inference")
+    assert_equal(true, hovered.origin.distance(position) < 0.001, "#{label} is snapped before clicking")
+    assert_equal([], placement_events, "#{label} preview does not confirm placement")
+    tool.onLButtonDown(0, screen.x + 2, screen.y, view)
+    assert_equal(hovered.origin.to_a, placement_events.fetch(0).origin.to_a, "#{label} click matches the preview")
+    assert_equal(true, placement_events.fetch(0).zaxis.samedirection?(normal), "#{label} keeps the target face orientation")
+  end
+ensure
+  model.select_tool(nil)
+  view.camera = original_camera
+  erase_tool_action_fixtures(model, [target_group])
+end

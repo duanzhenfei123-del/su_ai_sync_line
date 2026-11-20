@@ -71,7 +71,8 @@ const context = {
   Number,
   String,
   Window: function () {},
-  app: {},
+  CoordinateSystem: { DOCUMENTCOORDINATESYSTEM: 1, ARTBOARDCOORDINATESYSTEM: 2 },
+  app: { coordinateSystem: 2 },
   $: { global: {} }
 };
 vm.createContext(context);
@@ -144,7 +145,7 @@ function fakeTextWithCompoundOutline() {
   };
 }
 
-const nestedCompound = { typename: 'CompoundPathItem' };
+const nestedCompound = { typename: 'CompoundPathItem', uuid: 'compound-a' };
 const nestedGroup = { typename: 'GroupItem', parent: nestedCompound };
 const deepPath = square(1, false);
 deepPath.parent = nestedGroup;
@@ -153,6 +154,23 @@ otherPath.parent = {};
 context.app.activeDocument = { pathItems: [otherPath, deepPath] };
 assert.strictEqual(context.documentCompoundPaths(nestedCompound)[0], deepPath);
 assert.strictEqual(context.documentCompoundPaths(nestedCompound).length, 1);
+const secondCompound = { typename: 'CompoundPathItem', uuid: 'compound-b' };
+const secondPath = square(1, false);
+secondPath.parent = secondCompound;
+let collectionReads = 0;
+const documentWithCompounds = {
+  get pathItems() { collectionReads++; return [deepPath, secondPath, otherPath]; }
+};
+context.app.activeDocument = documentWithCompounds;
+assert.strictEqual(context.documentCompoundPaths(nestedCompound)[0], deepPath);
+assert.strictEqual(context.documentCompoundPaths(secondCompound)[0], secondPath);
+assert.strictEqual(collectionReads, 1, 'compound lookups share the document path index');
+
+const replacementPath = square(3, false);
+replacementPath.parent = nestedCompound;
+context.app.activeDocument = { pathItems: [replacementPath] };
+assert.strictEqual(context.documentCompoundPaths(nestedCompound)[0], replacementPath, 'a different document gets its own index');
+
 // Remaining fixtures model document paths with item.pathItems.
 context.documentCompoundPaths = function (item) { return item.pathItems; };
 
@@ -252,17 +270,44 @@ context.app.activeDocument = {
   selection: [square(5, false)]
 };
 
+context.app.activeDocument.artboards = Object.assign([
+  { artboardRect: [400, 200, 700, 0] },
+  { artboardRect: [72, 144, 288, -72] }
+], { getActiveArtboardIndex: () => 0 });
+function rectangleAt(left, bottom) {
+  const item = square(5, false);
+  item.geometricBounds = [left, bottom + 10, left + 10, bottom];
+  item.pathPoints = item.pathPoints.map(p => point(p.anchor[0] + left, p.anchor[1] + bottom));
+  return item;
+}
+context.app.activeDocument.selection = [rectangleAt(72, -72)];
 const exportResult = JSON.parse(context.exportSelectionAsJSON('C:/out'));
 assert.strictEqual(exportResult.jsonFile, 'latest_sync.json');
 assert.strictEqual(memoryFiles.has('C:/out/latest_sync.json'), true);
 const exported = JSON.parse(memoryFiles.get('C:/out/latest_sync.json'));
 assert.strictEqual(exported.schemaVersion, 2);
+assert.deepStrictEqual(exported.document.artboardOriginMM, [25.4, -25.4]);
+assert.strictEqual(context.app.coordinateSystem, 2);
 assert.strictEqual(memoryFiles.has('C:/out/sync_old.json'), false);
 assert.strictEqual(memoryFiles.has('C:/out/customer.json'), true);
 assert.strictEqual(memoryFiles.has('C:/out/photo.png'), true);
 assert.deepStrictEqual(Array.from(memoryFiles.keys()).filter(function (name) {
   return /\.log$/i.test(name);
 }), []);
+
+for (const [selection, origin] of [
+  [[rectangleAt(90, -60)], [25.4, -25.4]],
+  [[rectangleAt(400, 0)], [141.1111, 0]],
+  [[rectangleAt(-100, -100), rectangleAt(-150, -200)], null],
+  [[rectangleAt(67, -72)], null],
+  [[rectangleAt(72, -72), rectangleAt(400, 0)], null],
+  [[rectangleAt(72, -72), { typename: 'MysteryItem', geometricBounds: [400, 10, 410, 0] }], [25.4, -25.4]]
+]) {
+  context.app.activeDocument.selection = selection;
+  const result = JSON.parse(context.exportSelectionAsJSON('C:/out'));
+  assert.strictEqual(result.jsonFile, 'latest_sync.json');
+  assert.deepStrictEqual(JSON.parse(memoryFiles.get('C:/out/latest_sync.json')).document.artboardOriginMM, origin);
+}
 
 memoryFiles.clear();
 context.app.activeDocument = {

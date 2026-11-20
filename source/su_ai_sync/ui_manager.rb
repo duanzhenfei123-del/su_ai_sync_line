@@ -16,6 +16,7 @@ module SU_AI_Sync
       @layer_gap = LayerLayout.normalize_gap(
         Sketchup.read_default(PLUGIN, "layer_gap", 10.0)
       )
+      @placement = Sketchup.read_default(PLUGIN, "placement", "origin")
       @import_folder = SU_AI_Sync.import_folder
       Logger.info("UI_Manager: import_folder = #{@import_folder}")
     end
@@ -46,20 +47,32 @@ module SU_AI_Sync
       )
       dialog.set_html(html_content)
 
-      dialog.add_action_callback("import") do |_ctx|
+      dialog.add_action_callback("import") do |_ctx, placement|
         model = Sketchup.active_model
         unless model
           UI.messagebox("请先打开一个 SketchUp 模型")
           next
         end
+        @placement = placement == "mouse" ? "mouse" : "origin"
+        Sketchup.write_default(PLUGIN, "placement", @placement)
         effective_extrude = @extrude_enabled ? @extrude_thickness : 0
         Logger.info("Import extrude=#{effective_extrude} (enabled=#{@extrude_enabled})")
-        result = Importer.new(model).import(
-          @scale, @create_faces, @curve_segs, @import_folder, effective_extrude,
-          @z_stack_enabled, @layer_gap
-        )
-        status = result[:message] || "导入完成"
-        dialog.execute_script("document.getElementById('status').textContent = '#{escape_js(status)}';")
+        args = [@scale, @create_faces, @curve_segs, @import_folder, effective_extrude, @z_stack_enabled, @layer_gap]
+        if @placement == "mouse"
+          preview = Importer.new(model).import(*args, preview: true)
+          unless preview[:success]
+            set_import_status(dialog, preview[:message])
+            next
+          end
+          set_import_status(dialog, "移动鼠标预览，左键确认，Esc 取消", waiting: true)
+          model.select_tool(ImportPlacementTool.new(model, preview[:edges]) do |target|
+            result = preview[:confirm].call(target) if target
+            set_import_status(dialog, target ? (result[:message] || "导入完成") : "已取消放置")
+          end)
+        else
+          result = Importer.new(model).import(*args)
+          set_import_status(dialog, result[:message] || "导入完成")
+        end
       end
 
       dialog.add_action_callback("reload") do |_ctx|
@@ -182,6 +195,16 @@ module SU_AI_Sync
       dialog
     end
 
+    def set_import_status(dialog, status, waiting: false)
+      return unless dialog.visible?
+
+      dialog.execute_script(
+        "document.getElementById('status').textContent = #{JSON.generate(status)};" +
+        "document.getElementById('importBtn').disabled = #{waiting};" +
+        "document.getElementById('placement').disabled = #{waiting};"
+      )
+    end
+
     def browse_folder(dialog)
       path = UI.select_directory(
         title: "选择导入文件夹（包含 .json 和图片）",
@@ -260,7 +283,12 @@ module SU_AI_Sync
         </style></head><body><div class="container">
         <h2>SU+AI 同步 v3.7.4</h2>
         <div style="text-align:center;font-size:12px;color:#999;margin:-10px 0 8px 0">作者：段土土</div>
-        <button class="btn btn-primary" onclick="doImport()">导入同步数据</button>
+        <button class="btn btn-primary" id="importBtn" onclick="doImport()">导入同步数据</button>
+        <div class="row"><label for="placement">放置方式:</label>
+        <select id="placement">
+          <option value="origin">左下角归零</option>
+          <option value="mouse"#{@placement == "mouse" ? " selected" : ""}>跟随鼠标放置</option>
+        </select></div>
         <div class="row"><label>导入比例:</label>
         <select onchange="sketchup.set_scale(this.value)">
           <option value="1.0"#{scale_selected_1}>1:1 (等大)</option>
@@ -305,7 +333,7 @@ module SU_AI_Sync
         <div class="divider"></div>
         <div class="info"><b>使用方法：</b><br>1. 在 AI 中选择图形后导出到文件夹<br>2. 选择比例/细分/封面<br>3. 确认文件夹路径正确<br>4. 点击导入</div>
         </div><script>
-        function doImport(){document.getElementById('status').textContent='正在导入...';sketchup.import();}
+        function doImport(){document.getElementById('status').textContent='正在导入...';sketchup.import(document.getElementById('placement').value);}
         function toggleFace(){
           var btn = document.getElementById('faceBtn');
           var isOn = btn.classList.contains('btn-on') ? false : true;

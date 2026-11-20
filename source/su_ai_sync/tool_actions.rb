@@ -1,4 +1,117 @@
 module SU_AI_Sync
+  class ImportPlacementTool
+    SNAP_RADIUS = 8
+
+    def initialize(model, preview_edges = [], &finished)
+      @model = model
+      @preview_edges = preview_edges
+      @finished = finished
+      @point = Sketchup::InputPoint.new
+    end
+
+    def activate
+      Sketchup.set_status_text('移动鼠标预览，可捕捉顶点和中点，左键确认，Esc 取消')
+    end
+
+    def onMouseMove(_flags, x, y, view)
+      pick_target(view, x, y)
+      view.tooltip = @tooltip
+      view.invalidate
+    end
+
+    def draw(view)
+      return unless @target
+
+      view.drawing_color = 'blue'
+      view.line_width = 2
+      unless @preview_edges.empty?
+        outline = @preview_edges.map { |point| view.screen_coords(point.transform(@target)) }
+        view.draw2d(GL_LINES, outline)
+      end
+      view.draw_points([@target.origin], 7, 2, @snap_label ? 'green' : 'blue')
+    end
+
+    def onLButtonDown(_flags, x, y, view)
+      return unless @finished
+
+      pick_target(view, x, y)
+      return unless @target
+
+      finished = @finished
+      @finished = nil
+      @model.select_tool(nil)
+      finished.call(@target)
+    end
+
+    def onCancel(_reason, _view)
+      @model.select_tool(nil)
+    end
+
+    def deactivate(view)
+      view.invalidate
+      @finished&.call(nil)
+      @finished = nil
+    end
+
+    private
+
+    def pick_target(view, x, y)
+      @point.pick(view, x, y)
+      snapped, entity, @snap_label, snap_transform = snap_point(view, x, y)
+      ray = view.pickray(x, y)
+      position, path = @model.raytest(ray, true)
+      face = path&.last
+      if snapped
+        adjacent = entity.faces.reject { |candidate| candidate.hidden? || !candidate.layer.visible? }
+        face = adjacent.include?(face) ? face : adjacent.first
+        @target = face ? surface_target(snapped, face, snap_transform, ray[1]) : Geom::Transformation.translation(snapped)
+      elsif face.is_a?(Sketchup::Face)
+        @target = surface_target(position, face, Sketchup::InstancePath.new(path).transformation, ray[1])
+      else
+        @target = @point.valid? ? Geom::Transformation.translation(@point.position) : nil
+      end
+      @tooltip = @snap_label || (face.is_a?(Sketchup::Face) ? '贴面放置' : (@point.valid? ? @point.tooltip : ''))
+    end
+
+    def snap_point(view, x, y)
+      if @point.valid? && (vertex = @point.vertex)
+        return [@point.position, vertex, '顶点', @point.transformation]
+      end
+
+      picker = view.pick_helper
+      count = picker.do_pick(x, y, SNAP_RADIUS)
+      best = nil
+      nearest = SNAP_RADIUS
+      count.times do |index|
+        edge = picker.leaf_at(index)
+        next unless edge.is_a?(Sketchup::Edge)
+
+        transform = @model.edit_transform * picker.transformation_at(index)
+        first = edge.start.position.transform(transform)
+        last = edge.end.position.transform(transform)
+        midpoint = Geom.linear_combination(0.5, first, 0.5, last)
+        [[first, edge.start, '顶点'], [last, edge.end, '顶点'], [midpoint, edge, '中点']].each do |point, entity, label|
+          screen = view.screen_coords(point)
+          distance = Math.hypot(screen.x - x, screen.y - y)
+          next if distance > nearest || (best && distance == nearest)
+
+          best = [point, entity, label, transform]
+          nearest = distance
+        end
+      end
+      best
+    end
+
+    def surface_target(position, face, transform, ray_direction)
+      local_x, local_y = face.normal.axes
+      # Transform tangents so the normal stays correct under non-uniform scaling.
+      normal = local_x.transform(transform).cross(local_y.transform(transform)).normalize
+      normal.reverse! if normal.dot(ray_direction) > 0
+      x_axis = normal.parallel?(Z_AXIS) ? X_AXIS : Z_AXIS.cross(normal).normalize
+      Geom::Transformation.axes(position, x_axis, normal.cross(x_axis), normal)
+    end
+  end
+
   module ToolActions
     module_function
 

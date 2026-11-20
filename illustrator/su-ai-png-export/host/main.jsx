@@ -66,6 +66,7 @@ function ownedSyncFile(name){return /^sync_.*\.(json|tmp)$/i.test(name)||/^lates
 var TOL=0.01;
 var TEXT_OUTLINE_COUNTER=0;
 var COMPOUND_COUNTER=0;
+var compoundPathIndex=null;
 function itemZIndex(item,fallback){
     try{
         var siblings=item.parent&&item.parent.pageItems;
@@ -305,19 +306,31 @@ function aCP(item,ps,s,compoundKey){
 }
 
 function documentCompoundPaths(item){
-    var all=app.activeDocument.pathItems, paths=[];
-    for(var i=0;i<all.length;i++){
-        var parent=all[i].parent;
+    var doc=app.activeDocument, uuid=item.uuid;
+    if(uuid && compoundPathIndex && compoundPathIndex.document===doc){
+        return compoundPathIndex.paths["$"+uuid] || [];
+    }
+
+    var all=doc.pathItems, count=all.length, indexed={}, paths=[];
+    for(var i=0;i<count;i++){
+        var path=all[i], parent=path.parent;
         while(parent && parent.typename!=="Document"){
-            if(parent===item){paths.push(all[i]);break;}
+            if(!uuid && parent===item){paths.push(path);break;}
+            if(uuid && parent.typename==="CompoundPathItem" && parent.uuid){
+                var key="$"+parent.uuid;
+                if(!indexed[key]) indexed[key]=[];
+                indexed[key].push(path);
+            }
             parent=parent.parent;
         }
     }
-    return paths;
+    if(!uuid) return paths;
+    compoundPathIndex={document:doc,paths:indexed};
+    return indexed["$"+uuid] || [];
 }
 
 function expandNestedPlugin(item,paths,groups,s,warnings){
-    var original=app.activeDocument, temp=null;
+    var original=app.activeDocument, temp=null, originalIndex=compoundPathIndex;
     try {
         temp=app.documents.add(original.documentColorSpace);
         var copy=item.duplicate(temp,ElementPlacement.PLACEATEND), before=copy.geometricBounds, target=item.geometricBounds;
@@ -336,6 +349,7 @@ function expandNestedPlugin(item,paths,groups,s,warnings){
     } finally {
         if(temp) temp.close(SaveOptions.DONOTSAVECHANGES);
         original.activate();
+        compoundPathIndex=originalIndex;
     }
 }
 
@@ -426,7 +440,9 @@ function otl(item,s){
     log("otl: outline");
     var o=[];
     var textGroupId="text_"+padZero(TEXT_OUTLINE_COUNTER++,4);
-    var textZIndex=itemZIndex(item,0);
+    var textZIndex=itemZIndex(item,0), originalIndex=compoundPathIndex;
+    // Outlined glyphs exist only during this call and must be indexed separately.
+    compoundPathIndex=null;
     try{
         var c=item.duplicate();var r=c.createOutline();var t=(r&&r.typename)?r:c;
         function collectText(node){
@@ -444,6 +460,7 @@ function otl(item,s){
             o[k].zIndex=textZIndex;
         }
     }catch(e){try{if(t)t.remove();else if(c)c.remove()}catch(cleanupError){} throw e}
+    finally{compoundPathIndex=originalIndex;}
     return o;
 }
 
@@ -541,6 +558,18 @@ function wg(g,f){
     for(var i=0;i<g.groups.length;i++){wg(g.groups[i],f);if(i<g.groups.length-1)f.write(",");}
     f.write('],"zIndex":'+(g.zIndex||0)+"}")
 }
+function containingArtboard(artboards, bounds) {
+    if (!artboards || !bounds) return null;
+    var active = artboards.getActiveArtboardIndex();
+    for (var i = 0; i < artboards.length; i++) {
+        var index = (active + i) % artboards.length;
+        var rect = artboards[index].artboardRect;
+        if (bounds[0] >= rect[0] - TOL && bounds[1] <= rect[1] + TOL &&
+            bounds[2] <= rect[2] + TOL && bounds[3] >= rect[3] - TOL) return rect;
+    }
+    return null;
+}
+
 function exportSelectionAsJSON(folderPath) {
     try {
         var cleanFolder = new Folder(folderPath);
@@ -559,15 +588,19 @@ function exportSelectionAsJSON(folderPath) {
         }
     } catch(ce) {}
     var result = { count: 0, total: 0, errors: [], diagnostics: [], jsonFile: "" };
+    var originalCoordinates = app.coordinateSystem;
     try {
+        app.coordinateSystem = CoordinateSystem.DOCUMENTCOORDINATESYSTEM;
         TEXT_OUTLINE_COUNTER = 0;
         COMPOUND_COUNTER = 0;
+        compoundPathIndex = null;
         var doc = app.activeDocument;
         var selectedItems = doc.selection;
         if (!selectedItems || selectedItems.length < 1) { result.total = 0; return _jsonStringify(result); }
         var sel = [];
         for (var si = 0; si < selectedItems.length; si++) sel.push(selectedItems[si]);
         result.total = sel.length;
+        var exportBounds = null;
         var s = 1; var paths = []; var groups = []; var images = [];
         var selectionZ = [];
         for (var zi = 0; zi < sel.length; zi++) selectionZ.push(itemZIndex(sel[zi], zi));
@@ -590,6 +623,7 @@ function exportSelectionAsJSON(folderPath) {
                 }
             } else if (t === "PluginItem") {
                 var temporaryPlugin = null, temporaryItems = [], cleanupErrorMessage = "";
+                compoundPathIndex = null;
                 diagnostic.expansionCommand = "expandStyle";
                 try {
                     temporaryPlugin = item.duplicate();
@@ -621,6 +655,7 @@ function exportSelectionAsJSON(folderPath) {
                     if (!temporaryItems.length && temporaryPlugin) temporaryItems.push(temporaryPlugin);
                     for (var ci = temporaryItems.length - 1; ci >= 0; ci--) try { temporaryItems[ci].remove(); } catch (cleanupError) { cleanupErrorMessage = cleanupError.message; }
                     try { doc.selection = sel; } catch (restoreError) { cleanupErrorMessage = "原选区恢复失败: " + restoreError.message; }
+                    compoundPathIndex = null;
                     if (cleanupErrorMessage) {
                         diagnostic.status = "skipped";
                         diagnostic.reason = "临时扩展对象清理失败: " + cleanupErrorMessage;
@@ -633,6 +668,18 @@ function exportSelectionAsJSON(folderPath) {
                 result.errors.push("第 " + diagnostic.index + " 项（" + diagnostic.type + "）已跳过：" + diagnostic.reason);
             }
             result.diagnostics.push(diagnostic);
+            if (paths.length > pathStart || groups.length > groupStart) {
+                var bounds = item.geometricBounds;
+                if (bounds) {
+                    if (!exportBounds) exportBounds = [bounds[0], bounds[1], bounds[2], bounds[3]];
+                    else {
+                        exportBounds[0] = Math.min(exportBounds[0], bounds[0]);
+                        exportBounds[1] = Math.max(exportBounds[1], bounds[1]);
+                        exportBounds[2] = Math.max(exportBounds[2], bounds[2]);
+                        exportBounds[3] = Math.min(exportBounds[3], bounds[3]);
+                    }
+                }
+            }
             for (var pi = pathStart; pi < paths.length; pi++) paths[pi].zIndex = selectionZ[i];
             for (var gi = groupStart; gi < groups.length; gi++) groups[gi].zIndex = selectionZ[i];
         }
@@ -642,7 +689,10 @@ function exportSelectionAsJSON(folderPath) {
         var f = new File(jsonFilePath + ".tmp");
         f.encoding = "UTF-8"; f.open("w");
         f.write('{"version":"'+VERSION+'","schemaVersion":2,"units":"mm","scale":'+s);
-        f.write(',"document":{"name":"'+esc(doc.name)+'","widthMM":'+mm(doc.width)+',"heightMM":'+mm(doc.height)+'}');
+        f.write(',"document":{"name":"'+esc(doc.name)+'","widthMM":'+mm(doc.width)+',"heightMM":'+mm(doc.height));
+        var rect = containingArtboard(doc.artboards, exportBounds);
+        f.write(',"artboardOriginMM":'+(rect ? '['+r4(mm(rect[0]))+','+r4(mm(rect[3]))+']' : 'null'));
+        f.write("}");
         f.write(',"paths":[');
         for (var i = 0; i < paths.length; i++) { var p = paths[i];
             f.write('{"id":"'+(p.id||"p_"+padZero(i,3))+'","name":"'+esc(p.name)+'","isClosed":'+p.cl);
@@ -676,6 +726,7 @@ function exportSelectionAsJSON(folderPath) {
         if (backupFile.exists) backupFile.remove();
         result.count = paths.length + groups.length; result.jsonFile = jsonFileName;
     } catch(e) { result.errors.push("fatal: " + e.message); }
+    finally { compoundPathIndex = null; app.coordinateSystem = originalCoordinates; }
     return _jsonStringify(result);
 }
 

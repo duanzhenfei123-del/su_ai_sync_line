@@ -12,6 +12,7 @@ assert_equal(true, html.include?('id="layerGapInput"'), 'panel contains layer ga
 assert_equal(true, html.include?('sketchup.drop_to_surface()'), 'panel contains surface drop action')
 assert_equal(true, html.include?('sketchup.import_texture_aligned()'), 'panel contains aligned texture action')
 assert_equal(true, html.include?('作者：段土土'), 'panel preserves author label')
+assert_equal(['origin', 'mouse'], html[/<select id="placement">.*?<\/select>/m].scan(/<option value="([^"]+)"/).flatten, 'panel offers automatic origin and mouse placement')
 
 dialog = nil
 begin

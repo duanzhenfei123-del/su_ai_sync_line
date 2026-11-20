@@ -2,13 +2,11 @@
   class Importer
     def initialize(model)
       @model = model
-      @material_manager = MaterialManager.new
-      @geometry_builder = GeometryBuilder.new(model, @material_manager)
     end
 
     def import(scale = 1.0, create_faces = true, curve_segs = 12,
                import_folder = nil, extrude_thickness = 0,
-               z_stack = false, layer_gap = 10.0)
+               z_stack = false, layer_gap = 10.0, target: nil, preview: false)
       Logger.reset_for_import
       label = create_faces ? "faces on" : "lines only"
       extrude_label = extrude_thickness > 0 ? ", extrude:#{extrude_thickness}mm" : ""
@@ -34,6 +32,7 @@
         Logger.info("JSON parsed: version #{data["version"] || "unknown"}")
 
         effective_scale = (data["scale"] || 1.0) * scale
+        artboard = artboard_origin(data, effective_scale) unless target || preview
 
         paths = normalize_paths(data, import_path)
         groups = (data["groups"] || []).map { |group| normalize_group(group) }
@@ -44,9 +43,11 @@
 
         Logger.info("Paths: #{paths.length}, Groups: #{groups.length}, Images: #{images.length}")
 
-        @geometry_builder.soften_enabled = extrude_thickness.to_f > 0
-        @model.start_operation("SU+AI Sync Import", true)
-        begin
+        build = lambda do |placement, previewing|
+          @geometry_builder = GeometryBuilder.new(@model, MaterialManager.new)
+          @geometry_builder.soften_enabled = extrude_thickness.to_f > 0
+          operation_started = @model.start_operation("SU+AI Sync Import", true)
+          raise '无法开始导入操作' unless operation_started
           temp_group = @model.entities.add_group
 
           if z_stack
@@ -76,7 +77,17 @@
 
           build_images(images, temp_group, effective_scale, curve_segs)
 
-          align_bottom_left_to_origin(temp_group)
+          if previewing
+            # Keep only the rendered points so previewing never leaves an open operation.
+            place_group(temp_group, nil, Geom::Transformation.new)
+            edges = preview_edges(temp_group, temp_group.transformation)
+            raise '没有可预览的导入轮廓' if edges.empty?
+
+            @model.abort_operation
+            next({ success: true, edges: edges })
+          end
+
+          place_group(temp_group, artboard, placement)
           temp_group.name = "AI导入 (#{paths.length}p #{groups.length}g)"
 
           @model.commit_operation
@@ -84,21 +95,38 @@
           Logger.info("Import done: #{paths.length} paths, #{groups.length} groups, #{images.length} images")
           { success: true, paths: paths.length, groups: groups.length, images: images.length }
         rescue => e
-          @model.abort_operation
-          raise e
+          @model.abort_operation if operation_started
+          report_import_error(e)
         end
+        result = build.call(target, preview)
+        result[:confirm] = ->(placement) { build.call(placement, false) } if preview && result[:success]
+        result
       rescue JSON::ParserError => e
         UI.messagebox("JSON 解析错误: #{e.message}")
         Logger.error("JSON parse: #{e.message}")
         { success: false, message: e.message }
       rescue => e
-        UI.messagebox("导入失败: #{e.message}")
-        Logger.error("Import: #{e.message}")
-        { success: false, message: e.message }
+        report_import_error(e)
       end
     end
 
     private
+
+    def preview_edges(group, transform)
+      points = group.entities.grep(Sketchup::Edge).reject { |edge| edge.hidden? || edge.soft? }.flat_map do |edge|
+        [edge.start.position.transform(transform), edge.end.position.transform(transform)]
+      end
+      group.entities.grep(Sketchup::Group).each do |child|
+        points.concat(preview_edges(child, transform * child.transformation))
+      end
+      points
+    end
+
+    def report_import_error(error)
+      UI.messagebox("导入失败: #{error.message}")
+      Logger.error("Import: #{error.message}")
+      { success: false, message: error.message }
+    end
 
     def validate_data!(data)
       raise ArgumentError, '同步数据根节点必须是对象' unless data.is_a?(Hash)
@@ -281,14 +309,28 @@
       repaired
     end
 
-    def align_bottom_left_to_origin(group)
-      bounds = group.bounds
-      min = bounds.min
-      if min.x != 0 || min.y != 0
-        translation = Geom::Transformation.translation([-min.x, -min.y, 0])
-        group.transform!(translation)
-        Logger.info("Group aligned: bottom-left (#{min.x}, #{min.y}) moved to (0, 0)")
+    def artboard_origin(data, scale)
+      document = data['document']
+      origin = document['artboardOriginMM'] if document.is_a?(Hash)
+      return nil if origin.nil?
+
+      unless origin.is_a?(Array) && origin.size == 2 && origin.all? { |axis| axis.is_a?(Numeric) && axis.finite? }
+        raise ArgumentError, '同步数据的画板原点无效，请在 Illustrator 中重新导出轮廓'
       end
+
+      origin.map { |axis| (axis * scale).mm }
+    end
+
+    def place_group(group, artboard, target)
+      if artboard
+        offset = [-artboard[0], -artboard[1], 0]
+      else
+        corner = group.bounds.min
+        offset = [-corner.x, -corner.y, target ? -corner.z : 0]
+      end
+      transform = Geom::Transformation.translation(offset)
+      transform = target * transform if target
+      group.transform!(transform)
     end
 
     def locate_json(directory)
