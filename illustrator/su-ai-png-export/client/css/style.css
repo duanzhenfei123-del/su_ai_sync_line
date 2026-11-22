@@ -23,16 +23,27 @@ body {
     gap: 8px;
 }
 
-.author-row {
+.dtt-ai-export-header {
     display: flex;
+    align-items: center;
     justify-content: space-between;
-    font-size: 10px;
-    color: #999;
-    margin-bottom: 2px;
+    gap: 6px;
 }
 
-.author-name { color: #aaa; }
-.thanks-name { color: #888; }
+.dtt-ai-export-header h1 { font-size: 13px; font-weight: 600; }
+
+.dtt-ai-export-donation {
+    margin: auto;
+    max-width: calc(100% - 12px);
+    padding: 6px;
+    border: 1px solid #555;
+    border-radius: 6px;
+    background: #252525;
+}
+
+.dtt-ai-export-donation::backdrop { background: rgba(0, 0, 0, .6); }
+.dtt-ai-export-donation form { margin-bottom: 4px; text-align: right; }
+.dtt-ai-export-donation img { display: block; margin: auto; max-width: 100%; max-height: calc(100vh - 56px); }
 
 .field-row {
     display: flex;

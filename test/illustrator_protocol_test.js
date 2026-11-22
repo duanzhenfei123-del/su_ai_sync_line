@@ -83,7 +83,7 @@ vm.runInContext(fs.readFileSync(jsxPath, 'utf8'), context, { filename: jsxPath }
 assert.strictEqual(context.hex({ typename: 'GrayColor', gray: 0 }), 'FFFFFF');
 assert.strictEqual(context.hex({ typename: 'GrayColor', gray: 100 }), '000000');
 assert.strictEqual(context.hex({ typename: 'GrayColor', gray: 50 }), '808080');
-assert.strictEqual(context.VERSION, '3.8');
+assert.strictEqual(context.getSuAiExportVersion(), context.VERSION);
 [
   'shortcutDataFolder', 'configureGlobalShortcuts',
   'ensureGlobalShortcutHost', 'touchGlobalShortcutHeartbeat',
@@ -285,6 +285,7 @@ const exportResult = JSON.parse(context.exportSelectionAsJSON('C:/out'));
 assert.strictEqual(exportResult.jsonFile, 'latest_sync.json');
 assert.strictEqual(memoryFiles.has('C:/out/latest_sync.json'), true);
 const exported = JSON.parse(memoryFiles.get('C:/out/latest_sync.json'));
+assert.strictEqual(exported.version, context.VERSION);
 assert.strictEqual(exported.schemaVersion, 2);
 assert.deepStrictEqual(exported.document.artboardOriginMM, [25.4, -25.4]);
 assert.strictEqual(context.app.coordinateSystem, 2);

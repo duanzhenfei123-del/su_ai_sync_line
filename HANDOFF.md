@@ -6,14 +6,16 @@
 
 - 仓库：`git@github.com:duanzhenfei123-del/su_ai_sync_line.git`
 - 主分支：`main`。
-- 当前配套源码版本为 SketchUp `v3.8` 和 Illustrator `v3.8`。新版本安装器的构建目录和包名使用 `v3.8.0`。
+- 当前配套源码版本为 SketchUp 和 Illustrator `v3.8.0`。两端安装包沿用 `SU_AI_Sync_Import_vX.Y.Z.rbz` 和 `SU_AI_PNG_Export_vX.Y.Z_Setup.exe`。
 - 历史标签包括 `v3.6.0` 至 `v3.7.4`。发布状态以 Git 和 GitHub Releases 为准。
-- GitHub Releases 已按版本建立；每个版本只手动附加 SketchUp RBZ 和 AI Windows 安装器 EXE。GitHub 自动生成的 Source code ZIP/TAR 不属于手动上传附件。
+- 历史 GitHub Releases 按各版本原样保留。后续发布按 DTT 规范补充版本 README 和校验文件。
 - `v3.7.1` 是 AI 端维护版，SketchUp 端使用兼容的 `v3.7` RBZ。
 
 ## 继续开发约束
 
-- SketchUp v3.8 面板按导入流程组织。导入参数位于主按钮上方，辅助工具在下方，维护入口位于右上角齿轮。
+- SketchUp 面板按导入流程组织。导入参数位于主按钮上方，辅助工具在下方，维护入口位于右上角齿轮。
+- 两端面板分别从 SketchUp Ruby 和 Illustrator ExtendScript 的 `VERSION` 读取运行版本。更新版本时核对 CEP 清单和安装器元数据。打赏弹窗各自从包内加载公共规范指定的同一张 PNG。
+- 保留 SketchUp 工具栏注册名「SU+AI 同步」以复用既有布局，启用原生恢复。扩展菜单名称在 SketchUp 启动时注册。
 - v3.7.4 调整复合路径、图片和蒙版轮廓、灰度颜色转换及白色材质；复杂蒙版与透明像素的限制见 README。
 - AI 端不恢复全局快捷键钩子；Illustrator 原生快捷键必须放行。
 - 默认导出目录只在用户点击导出时创建；未自定义路径时使用桌面的 `ai-export`。
@@ -26,11 +28,12 @@
 2. 每次上传前都更新 `README.md`，必须包含：软件简介、适用端（SketchUp/Illustrator）、安装方式、基本使用方法、当前版本和 Release list 链接。
 3. Release 使用语义化标签 `vX.Y.Z`，标题写成 `SU+AI 同步 vX.Y.Z`，并保持最新稳定版为 Latest。
 4. Release 下载方式统一为 GitHub Releases；不要把根目录散落文件当作主要下载入口。
-5. 每个 Release 只上传两个手动附件：
+5. 在 `releases/vX.Y.Z/README.md` 记录实际发布日期、更新类型、变更及影响、升级方法、兼容性、已知问题和宿主实测结果。将正文同步到 GitHub Release，并上传以下附件：
    - SketchUp 导入端：`SU_AI_Sync_Import_vX.Y.Z.rbz`（若该 SU 端兼容上一小版本，在 Release 说明中写明）。
    - AI 端：`SU_AI_PNG_Export_vX.Y.Z_Setup.exe`。
-6. 不上传 ZIP、PDF、源码压缩包或构建中间文件到 Release；GitHub 自动生成的 Source code ZIP/TAR 无需处理。
-7. 发布前核对标签、版本号、附件数量（手动附件应为 2 个）和 SHA-256；Release 说明只写实际验证过的内容，未实测项目明确标注。
+   - 版本说明 `README.md` 与安装成品的 `SHA256SUMS.txt`。
+6. GitHub 自动生成的 Source code ZIP/TAR 无需处理。
+7. 发布前核对标签、版本号、正文和附件的 SHA-256，并明确记录未实测的项目。
 8. 不删除旧 Release、旧草稿、历史包或用户备份；需要清理时先确认目标，再优先移入回收站或归档目录。
 
 ## 本地整理记录

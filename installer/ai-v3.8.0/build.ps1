@@ -75,7 +75,7 @@ function Assert-PayloadMatchesSource {
             }
         }
 
-        if ($sourceFiles.Count -ne 11 -or $entries.Count -ne 11 -or $forbidden.Count -ne 0 -or $mismatches.Count -ne 0) {
+        if ($sourceFiles.Count -ne 12 -or $entries.Count -ne 12 -or $forbidden.Count -ne 0 -or $mismatches.Count -ne 0) {
             throw "Payload mismatch: source=$($sourceFiles.Count), entries=$($entries.Count), forbidden=$($forbidden.Count), errors=$($mismatches -join '; ')"
         }
     }
@@ -139,7 +139,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 $version = (Get-Item -LiteralPath $output).VersionInfo
-if ($version.FileVersion -ne '3.8.0.0' -or $version.ProductVersion -ne '3.8') {
+if ($version.FileVersion -ne '3.8.0.0' -or $version.ProductVersion -ne '3.8.0') {
     throw "Unexpected version metadata: $($version.FileVersion) / $($version.ProductVersion)"
 }
 

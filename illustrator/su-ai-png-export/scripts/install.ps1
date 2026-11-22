@@ -26,7 +26,7 @@ if ($source.Equals($destination, [StringComparison]::OrdinalIgnoreCase) -or
     throw "安装来源目录不能与目标目录相同或重叠。请先将安装包解压到其他文件夹后重试。来源: $source；目标: $destination"
 }
 
-Write-Host '正在安装 SU+AI PNG 导出...'
+Write-Host '正在安装 DTT 轮廓与图片导出...'
 Write-Host "来源: $source"
 Write-Host "目标: $destination"
 Write-Host ''
@@ -84,5 +84,5 @@ if (-not $SkipDebugMode) {
 }
 
 Write-Host ''
-Write-Host 'SU+AI PNG 导出 v3.8 安装完成！'
+Write-Host 'DTT 轮廓与图片导出安装完成！'
 Write-Host "目标位置: $destination"

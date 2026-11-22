@@ -1,4 +1,8 @@
-var VERSION = "3.8";
+var VERSION = "3.8.0";
+
+function getSuAiExportVersion() {
+    return VERSION;
+}
 var desktop = Folder.desktop;
 
 function padZero(n,l){var s=String(n);while(s.length<l)s="0"+s;return s}

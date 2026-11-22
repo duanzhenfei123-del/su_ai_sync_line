@@ -17,7 +17,7 @@ namespace SUAIInstaller
         {
             extensionsRoot = InstallerCore.DefaultExtensionsRoot();
 
-            Text = "SU+AI PNG 导出 v3.8 安装器";
+            Text = "DTT 轮廓与图片导出 v" + Program.PluginVersion + " 安装器";
             ClientSize = new Size(560, 306);
             MinimumSize = new Size(576, 345);
             MaximumSize = new Size(576, 345);
@@ -37,7 +37,7 @@ namespace SUAIInstaller
             };
             var title = new Label
             {
-                Text = "SU+AI PNG 导出",
+                Text = "DTT 轮廓与图片导出",
                 ForeColor = Color.White,
                 Font = new Font("Microsoft YaHei UI", 19F, FontStyle.Bold, GraphicsUnit.Point),
                 AutoSize = true,
@@ -45,7 +45,7 @@ namespace SUAIInstaller
             };
             var version = new Label
             {
-                Text = "Illustrator 插件安装器  ·  v3.8",
+                Text = "Illustrator 插件安装器  ·  v" + Program.PluginVersion,
                 ForeColor = Color.FromArgb(190, 196, 207),
                 AutoSize = true,
                 Location = new Point(27, 57)
@@ -150,7 +150,7 @@ namespace SUAIInstaller
                 statusLabel.Text = "状态：安装完成；安装器未重启 Illustrator。";
                 MessageBox.Show(
                     this,
-                    "SU+AI PNG 导出 v3.8 安装完成。\n\n安装器没有重启 Illustrator。如需自行重启，请先保存工作。\n\n打开：\n窗口 > 扩展（旧版）> SU+AI PNG 导出",
+                    "DTT 轮廓与图片导出 v" + Program.PluginVersion + " 安装完成。\n\n安装器没有重启 Illustrator。如需自行重启，请先保存工作。\n\n打开：\n窗口 > 扩展功能（或扩展〔旧版〕）> DTT 轮廓与图片导出",
                     "安装完成",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);
@@ -189,7 +189,7 @@ namespace SUAIInstaller
                 MessageBox.Show(
                     this,
                     existed ? "插件已卸载。" : "没有检测到已安装的插件。",
-                    "SU+AI PNG 导出",
+                    "DTT 轮廓与图片导出",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);
             }

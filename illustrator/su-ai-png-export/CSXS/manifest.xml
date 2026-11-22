@@ -1,12 +1,12 @@
 ﻿<?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <ExtensionManifest
     ExtensionBundleId="com.suai.pngexport"
-    ExtensionBundleVersion="3.8"
+    ExtensionBundleVersion="3.8.0"
     Version="9.0"
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
 
     <ExtensionList>
-        <Extension Id="com.suai.pngexport.panel" Version="3.8" />
+        <Extension Id="com.suai.pngexport.panel" Version="3.8.0" />
     </ExtensionList>
 
     <ExecutionEnvironment>
@@ -33,7 +33,7 @@
                 </Lifecycle>
                 <UI>
                     <Type>Panel</Type>
-                    <Menu>SU+AI PNG 导出</Menu>
+                    <Menu>DTT 轮廓与图片导出</Menu>
                     <Geometry>
                         <Size>
                             <Height>350</Height>

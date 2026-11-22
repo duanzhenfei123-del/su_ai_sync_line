@@ -1,4 +1,5 @@
 require "cgi"
+require "base64"
 
 module SU_AI_Sync
   class UI_Manager
@@ -30,11 +31,15 @@ module SU_AI_Sync
       @dialog.show
     end
 
+    def close
+      @dialog.close if @dialog&.visible?
+    end
+
     private
 
     def create_dialog
       dialog = UI::HtmlDialog.new(
-        dialog_title: "SU+AI 同步",
+        dialog_title: DISPLAY_NAME,
         preferences_key: "su_ai_sync_dialog",
         scrollable: true, resizable: true,
         width: 374, height: 640,
@@ -77,7 +82,6 @@ module SU_AI_Sync
       end
 
       dialog.add_action_callback("reload") do |_ctx|
-        dialog.close
         @hot_reloader.reload!
       end
 
@@ -225,6 +229,7 @@ module SU_AI_Sync
 
       folder_display = CGI.escapeHTML(@import_folder)
       status_text, status_state = folder_status
+      donation_image = Base64.strict_encode64(File.binread(File.join(__dir__, "assets", "wechat_pay.png")))
 
       <<~HTML
         <!DOCTYPE html>
@@ -250,7 +255,7 @@ module SU_AI_Sync
             }
             [hidden] { display: none !important; }
             h1, h2, p, fieldset { margin: 0; }
-            h1 { font-size: 20px; font-weight: 650; letter-spacing: -.35px; }
+            h1 { font-size: 15px; font-weight: 650; }
             h2, legend, .field-label { font-size: 13px; font-weight: 600; }
             fieldset { min-width: 0; padding: 0; border: 0; }
             legend { padding: 0; }
@@ -281,9 +286,21 @@ module SU_AI_Sync
               display: flex;
               justify-content: space-between;
               align-items: center;
+              gap: 6px;
               padding-bottom: 9px;
               border-bottom: 1px solid #e2e7ef;
             }
+            .dtt-ai-sync-header-actions { display: flex; align-items: center; gap: 4px; }
+            .dtt-ai-sync-donate { min-height: 32px; white-space: nowrap; padding: 4px 8px; }
+            .dtt-ai-sync-donation {
+              max-width: calc(100% - 16px);
+              padding: 10px;
+              border: 1px solid var(--border);
+              border-radius: 8px;
+            }
+            .dtt-ai-sync-donation::backdrop { background: rgba(24, 34, 51, .50); }
+            .dtt-ai-sync-donation form { margin-bottom: 6px; text-align: right; }
+            .dtt-ai-sync-donation img { display: block; margin: auto; max-width: 100%; max-height: calc(100vh - 90px); }
             .import-options { display: grid; gap: 12px; margin-top: 12px; }
             .field-label { display: block; margin-bottom: 5px; }
             .row { display: flex; align-items: center; gap: 8px; }
@@ -422,25 +439,26 @@ module SU_AI_Sync
             }
             .settings-menu button { min-height: 30px; text-align: left; }
             .settings-menu label { padding: 0 5px; }
-            .settings-menu small { padding: 5px; border-top: 1px solid #e2e7ef; color: var(--muted); }
           </style>
         </head>
         <body>
           <main class="panel">
             <header class="panel-header">
-              <h1>SU+AI 同步</h1>
-              <details class="settings">
-                <summary aria-label="插件设置" title="插件设置">&#9881;</summary>
-                <div class="settings-menu">
-                  <button type="button" onclick="sketchup.reload()">热重载插件</button>
-                  <button type="button" onclick="sketchup.open_log()">打开日志</button>
-                  <button type="button" onclick="sketchup.reset_folder()">恢复默认文件夹</button>
-                  <label class="toggle-label" for="debugChk">调试模式
-                    <input class="switch" type="checkbox" id="debugChk" #{@debug_enabled ? 'checked' : ''} onchange="sketchup.set_debug(this.checked)">
-                  </label>
-                  <small>版本 #{VERSION}<br>作者：段土土</small>
-                </div>
-              </details>
+              <h1>#{DISPLAY_NAME} · 段土土 · v#{VERSION}</h1>
+              <div class="dtt-ai-sync-header-actions">
+                <button type="button" class="dtt-ai-sync-donate" onclick="document.getElementById('dtt-ai-sync-donation').showModal()">打赏</button>
+                <details class="settings">
+                  <summary aria-label="插件设置" title="插件设置">&#9881;</summary>
+                  <div class="settings-menu">
+                    <button type="button" onclick="sketchup.reload()">热重载插件</button>
+                    <button type="button" onclick="sketchup.open_log()">打开日志</button>
+                    <button type="button" onclick="sketchup.reset_folder()">恢复默认文件夹</button>
+                    <label class="toggle-label" for="debugChk">调试模式
+                      <input class="switch" type="checkbox" id="debugChk" #{@debug_enabled ? 'checked' : ''} onchange="sketchup.set_debug(this.checked)">
+                    </label>
+                  </div>
+                </details>
+              </div>
             </header>
 
             <div class="import-options">
@@ -520,6 +538,10 @@ module SU_AI_Sync
               </div>
             </section>
           </main>
+          <dialog id="dtt-ai-sync-donation" class="dtt-ai-sync-donation" aria-label="打赏">
+            <form method="dialog"><button type="submit">关闭</button></form>
+            <img src="data:image/png;base64,#{donation_image}" alt="微信与支付宝收款码合图">
+          </dialog>
           <script>
             function selectedPlacement() {
               return document.querySelector('input[name="placement"]:checked').value;

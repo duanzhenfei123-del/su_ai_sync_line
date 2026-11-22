@@ -3,7 +3,8 @@ require "json"
 require "fileutils"
 
 module SU_AI_Sync
-  VERSION = "3.8"
+  VERSION = "3.8.0"
+  DISPLAY_NAME = "DTT 同步导入"
   IS_WINDOWS = Sketchup.platform == :platform_win
   USER_HOME = (ENV["USERPROFILE"] || ENV["HOME"] || Dir.home).freeze
   APP_DATA_DIR = if IS_WINDOWS
@@ -96,10 +97,11 @@ module SU_AI_Sync
     Logger.info("Registering menu and toolbar")
 
     menu = UI.menu("Plugins")
-    submenu = menu.add_submenu("SU+AI 同步")
+    submenu = menu.add_submenu(DISPLAY_NAME)
     submenu.add_item("直接导入") { quick_import }
     submenu.add_item("控制面板") { show_dialog }
 
+    # Keep the existing name so SketchUp can restore saved toolbar layouts.
     toolbar = UI::Toolbar.new("SU+AI 同步")
     cmd_import = UI::Command.new("直接导入") { quick_import }
     cmd_import.small_icon = File.join(__dir__, "su_ai_sync", "icon_import.png")
@@ -112,10 +114,10 @@ module SU_AI_Sync
     cmd_panel.small_icon = File.join(__dir__, "su_ai_sync", "icon_panel.png")
     cmd_panel.large_icon = File.join(__dir__, "su_ai_sync", "icon_panel.png")
     cmd_panel.tooltip = "控制面板"
-    cmd_panel.status_bar_text = "打开 SU+AI 同步控制面板"
+    cmd_panel.status_bar_text = "打开 #{DISPLAY_NAME}控制面板"
     toolbar.add_item(cmd_panel)
 
-    toolbar.show
+    toolbar.get_last_state == TB_NEVER_SHOWN ? toolbar.show : toolbar.restore
 
     file_loaded(__FILE__)
     Logger.info("Plugin loaded v#{VERSION}")

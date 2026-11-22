@@ -317,6 +317,15 @@
 
     // ===== 初始化 =====
 
+    document.getElementById("dtt-ai-export-donate").addEventListener("click", function () {
+        document.getElementById("dtt-ai-export-donation").showModal();
+    });
+    csInterface.evalScript("getSuAiExportVersion()", function (version) {
+        if (/^\d+\.\d+\.\d+$/.test(version)) {
+            document.getElementById("dtt-ai-export-version").textContent = " · v" + version;
+        }
+    });
+
     // 加载已保存的导出目录配置
     loadExportConfig();
     setStatus("就绪 - 选择对象后点击导出", "");

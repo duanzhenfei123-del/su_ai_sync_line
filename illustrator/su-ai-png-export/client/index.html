@@ -4,21 +4,15 @@
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>SU+AI PNG 导出</title>
+    <title>DTT 轮廓与图片导出</title>
     <link rel="stylesheet" type="text/css" href="css/style.css">
 </head>
 <body>
     <div id="app">
-        <!-- 头部：标题 + 版本 -->
-        <div id="header-bar" style="display:flex;justify-content:space-between;align-items:center;">
-            <span style="font-size:10px;color:#aaa;letter-spacing:1px;">AI → PNG / JSON</span>
-            <span id="version-badge" style="border:1px solid #666;border-radius:999px;padding:2px 6px;font-size:10px;color:#aaa;">v3.8</span>
-        </div>
-        <!-- 作者信息 -->
-        <div class="author-row">
-            <span class="author-name">作者：段土土</span>
-
-        </div>
+        <header class="dtt-ai-export-header">
+            <h1>DTT 轮廓与图片导出 · 段土土<span id="dtt-ai-export-version"></span></h1>
+            <button type="button" id="dtt-ai-export-donate" class="btn">打赏</button>
+        </header>
 
         <!-- 导出目录 -->
         <div class="field-row">
@@ -64,6 +58,10 @@
         </div>
     </div>
 
+    <dialog id="dtt-ai-export-donation" class="dtt-ai-export-donation" aria-label="打赏">
+        <form method="dialog"><button type="submit" class="btn">关闭</button></form>
+        <img src="assets/wechat_pay.png" alt="微信与支付宝收款码合图">
+    </dialog>
     <script src="js/CSInterface.js"></script>
     <script src="js/main.js"></script>
 </body>

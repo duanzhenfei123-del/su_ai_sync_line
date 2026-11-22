@@ -124,7 +124,9 @@ namespace SUAIInstaller
                     "Installer target directory name changed");
                 var expected = FileHashes(source);
                 var actual = FileHashes(target);
-                Assert(expected.Count == 11, "Expected 11 source files");
+                Assert(expected.Count == 12, "Expected 12 source files");
+                Assert(File.Exists(Path.Combine(target, "client", "assets", "wechat_pay.png")),
+                    "Installed payload omitted the donation image");
                 Assert(actual.Count == expected.Count, "Installed file count differs");
                 foreach (var pair in expected)
                 {
