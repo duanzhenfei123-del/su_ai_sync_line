@@ -7,7 +7,7 @@
 - 仓库：`git@github.com:duanzhenfei123-del/su_ai_sync_line.git`
 - 主分支：`main`。
 - 当前配套源码版本为 SketchUp 和 Illustrator `v3.8.0`。两端安装包沿用 `SU_AI_Sync_Import_vX.Y.Z.rbz` 和 `SU_AI_PNG_Export_vX.Y.Z_Setup.exe`。
-- 历史标签包括 `v3.6.0` 至 `v3.7.4`。发布状态以 Git 和 GitHub Releases 为准。
+- 最新版本 `v3.8.0` 的变更、兼容性和实测记录见 [版本说明](./releases/v3.8.0/README.md)。历史版本保留各自的说明和安装包。
 - 历史 GitHub Releases 按各版本原样保留。后续发布按 DTT 规范补充版本 README 和校验文件。
 - `v3.7.1` 是 AI 端维护版，SketchUp 端使用兼容的 `v3.7` RBZ。
 

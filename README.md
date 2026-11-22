@@ -27,6 +27,7 @@
 
 | 版本 | 发布内容 | 说明 |
 | --- | --- | --- |
+| [v3.8.0](https://github.com/duanzhenfei123-del/su_ai_sync_line/releases/tag/v3.8.0) | SketchUp RBZ + AI Windows 安装器 | 同画板分批定位、鼠标预览放置、导入面板重排和 DTT 署名。 |
 | [v3.7.4](https://github.com/duanzhenfei123-del/su_ai_sync_line/releases/tag/v3.7.4) | SketchUp RBZ + AI Windows 安装器 | 复合路径、图片蒙版轮廓及白色材质修复。 |
 | [v3.7.3](https://github.com/duanzhenfei123-del/su_ai_sync_line/releases/tag/v3.7.3) | SketchUp RBZ + AI Windows 安装器 | AI 延迟创建默认导出目录。 |
 | [v3.7.2](https://github.com/duanzhenfei123-del/su_ai_sync_line/releases/tag/v3.7.2) | SketchUp RBZ + AI Windows 安装器 | 支持 `PluginItem` 临时扩展后导出轮廓。 |
